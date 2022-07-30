@@ -2,9 +2,9 @@
 name = "bevy-pong"
 version = "0.1.0"
 authors = ["Simon Voordouw <simonvoordouw@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { git = "https://github.com/bevyengine/bevy.git" }
+bevy = "0.8"
