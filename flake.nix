@@ -44,9 +44,12 @@
             wayland
             mold
           ];
+          postInstall = ''
+            cp -r assets $out/assets
+          '';
         };
-        packages.pong-web =
-          let
+
+        packages.pong-wasm = let
             target = "wasm32-unknown-unknown";
             toolchain = with fenix.packages.${system};
               combine [
@@ -54,7 +57,7 @@
                 minimal.cargo
                 targets.${target}.latest.rust-std
               ];
-            pong-wasm = (naersk.lib.${system}.override {
+            in (naersk.lib.${system}.override {
               cargo = toolchain;
               rustc = toolchain;
             }).buildPackage
@@ -67,7 +70,9 @@
                 buildInputs = with pkgs; [
                 ];
               };
-          in
+          
+        packages.pong-web =
+          
           pkgs.stdenv.mkDerivation {
             name = "pong-web";
             src = ./.;
@@ -77,7 +82,7 @@
             phases = [ "unpackPhase" "installPhase" ];
             installPhase = ''
               mkdir -p $out
-              wasm-bindgen --out-dir $out --out-name wasm --target no-modules --no-typescript ${pong-wasm}/bin/pong.wasm
+              wasm-bindgen --out-dir $out --out-name wasm --target no-modules --no-typescript ${packages.pong-wasm}/bin/pong.wasm
               cp index.html $out/index.html
               cp -r assets $out/assets
             '';
