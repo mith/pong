@@ -1,6 +1,6 @@
 use bevy::{
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
+    sprite::collide_aabb::{collide, Collision}, window::WindowMode,
 };
 
 #[derive(Component)]
@@ -45,10 +45,20 @@ enum GameloopStages {
 #[derive(Component)]
 struct Court;
 
-fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetServer>, windows: Res<Windows>) {
     let paddle_speed = config.paddle_speed;
 
-    commands.spawn_bundle(Camera2dBundle::default());
+    let window = windows.primary();
+
+    let height_ratio = window.height() / config.court_size[0];
+
+    commands.spawn_bundle(Camera2dBundle {
+        projection: OrthographicProjection {
+            scale: height_ratio,
+            ..default()
+        },
+        ..default()
+    });
 
     commands
         .spawn_bundle(SpriteBundle {
@@ -128,7 +138,7 @@ fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetSer
         .with_children(|root| {
             root.spawn_bundle(NodeBundle {
                 style: Style {
-                    size: Size::new(Val::Px(config.court_size[0]), Val::Px(config.court_size[1] + 100.0)),
+                    size: Size::new(Val::Percent(50.0), Val::Percent(100.0)),
                     ..default()
                 },
                 color: UiColor(Color::NONE),
@@ -172,6 +182,16 @@ fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetSer
                     .insert(AiController);
             });
         });
+}
+
+fn adjust_scale(mut commands: Commands,config: Res<Config>, windows: Res<Windows>, mut projections: Query<&mut OrthographicProjection, With<Camera>>) {
+    let window = windows.primary();
+    let height_ratio = config.court_size[0] / window.height();
+
+    for mut ortho in projections.iter_mut() {
+        ortho.scale = height_ratio * 1.2;
+    }
+
 }
 
 fn keyboard_input(
@@ -373,7 +393,8 @@ fn main() {
                 .label(GameloopStages::Input)
                 .before(GameloopStages::Physics)
                 .with_system(keyboard_input)
-                .with_system(ai_input),
+                .with_system(ai_input)
+                .with_system(adjust_scale),
         )
         .add_system_set(
             SystemSet::new()

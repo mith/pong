@@ -1,5 +1,5 @@
 [package]
-name = "bevy-pong"
+name = "pong"
 version = "0.1.0"
 authors = ["Simon Voordouw <simonvoordouw@gmail.com>"]
 edition = "2021"
