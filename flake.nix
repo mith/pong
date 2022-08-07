@@ -40,7 +40,6 @@
             alsaLib
             udev
             xorg.libX11
-            xorg.libX11
             xorg.libXcursor
             xorg.libXi
             xorg.libXrandr
@@ -100,6 +99,10 @@
               cp -r assets $out/assets
             '';
           };
+
+        packages.pong-server = pkgs.writeShellScriptBin "run-pong-server" ''
+          ${pkgs.python3}/bin/python -m http.server --directory ${packages.pong-web}
+        '';
 
         defaultPackage = packages.pong;
 
