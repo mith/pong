@@ -1,7 +1,10 @@
 use bevy::{
     prelude::*,
-    sprite::collide_aabb::{collide, Collision}, window::WindowMode,
+    sprite::collide_aabb::{collide, Collision},
+    window::WindowMode,
+    utils::Duration
 };
+use iyes_loopless::prelude::*;
 
 #[derive(Component)]
 struct PlayerController;
@@ -45,7 +48,12 @@ enum GameloopStages {
 #[derive(Component)]
 struct Court;
 
-fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetServer>, windows: Res<Windows>) {
+fn setup(
+    mut commands: Commands,
+    config: Res<Config>,
+    asset_server: Res<AssetServer>,
+    windows: Res<Windows>,
+) {
     let paddle_speed = config.paddle_speed;
 
     let window = windows.primary();
@@ -184,14 +192,18 @@ fn setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetSer
         });
 }
 
-fn adjust_scale(mut commands: Commands,config: Res<Config>, windows: Res<Windows>, mut projections: Query<&mut OrthographicProjection, With<Camera>>) {
+fn adjust_scale(
+    mut commands: Commands,
+    config: Res<Config>,
+    windows: Res<Windows>,
+    mut projections: Query<&mut OrthographicProjection, With<Camera>>,
+) {
     let window = windows.primary();
     let height_ratio = config.court_size[0] / window.height();
 
     for mut ortho in projections.iter_mut() {
         ortho.scale = height_ratio * 1.2;
     }
-
 }
 
 fn keyboard_input(
@@ -265,9 +277,9 @@ fn ai_input(
     }
 }
 
-fn ball_movement_system(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>) {
+fn ball_movement_system(time: Res<FixedTimestepInfo>, mut ball_query: Query<(&Ball, &mut Transform)>) {
     // clamp the timestep to stop the ball from escaping when the game starts
-    let delta_seconds = f32::min(0.2, time.delta_seconds());
+    let delta_seconds = f32::min(0.2, time.timestep().as_secs_f32());
 
     for (ball, mut transform) in ball_query.iter_mut() {
         transform.translation += ball.velocity * delta_seconds;
@@ -316,6 +328,8 @@ fn ball_collision_system(
                 match collision {
                     Collision::Right => velocity.x = velocity.x.abs(),
                     Collision::Left => velocity.x = -velocity.x.abs(),
+                    Collision::Top => velocity.y = velocity.y.abs(),
+                    Collision::Bottom => velocity.y = -velocity.y.abs(),
                     _ => (),
                 }
             }
@@ -376,6 +390,9 @@ fn scoreboardsystem(
 }
 
 fn main() {
+    let mut fixedupdate = SystemStage::parallel();
+    fixedupdate.add_system(ball_movement_system);
+    fixedupdate.add_system(ball_collision_system);
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(Scoreboard { player: 0, ai: 0 })
@@ -391,21 +408,19 @@ fn main() {
         .add_system_set(
             SystemSet::new()
                 .label(GameloopStages::Input)
-                .before(GameloopStages::Physics)
+                .before(GameloopStages::Scoring)
                 .with_system(keyboard_input)
                 .with_system(ai_input)
                 .with_system(adjust_scale),
         )
-        .add_system_set(
-            SystemSet::new()
-                .label(GameloopStages::Physics)
-                .with_system(ball_movement_system)
-                .with_system(ball_collision_system.after(ball_movement_system)),
+        .add_stage_before(
+            CoreStage::Update,
+            "my_fixed_update",
+            FixedTimestepStage::from_stage(Duration::from_millis(4), fixedupdate)
         )
         .add_system_set(
             SystemSet::new()
                 .label(GameloopStages::Scoring)
-                .after(GameloopStages::Physics)
                 .with_system(ball_scoring_system)
                 .with_system(scoreboardsystem.after(ball_scoring_system)),
         )
