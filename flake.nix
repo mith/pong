@@ -28,26 +28,30 @@
         pkgs = nixpkgs.legacyPackages."${system}";
         toolchain = fenix.packages.${system}.stable;
         naersk-lib = naersk.lib."${system}";
-      in rec {
+        buildInputs = with pkgs; [
+          libxkbcommon
+          alsaLib
+          udev
+          xorg.libX11
+          xorg.libXcursor
+          xorg.libXi
+          xorg.libXrandr
+          libxkbcommon
+          python3
+          vulkan-loader
+          wayland
+        ];
+        nativeBuildInputs = with pkgs; [
+          mold
+          clang
+          pkg-config
+        ];
+      in {
         packages.pong-bin = naersk-lib.buildPackage {
           name = "pong-bin";
           root = ./.;
-          buildInputs = with pkgs; [
-            libxkbcommon
-          ];
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-            alsaLib
-            udev
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
-            libxkbcommon
-            python3
-            vulkan-loader
-            wayland
-          ];
+          buildInputs = buildInputs;
+          nativeBuildInputs = nativeBuildInputs;
         };
         packages.pong = pkgs.stdenv.mkDerivation {
           name = "pong";
@@ -55,7 +59,7 @@
           phases = ["unpackPhase" "installPhase"];
           installPhase = ''
             mkdir -p $out
-            cp ${packages.pong-bin}/bin/pong $out/pong
+            cp ${self.packages.${system}.pong-bin}/bin/pong $out/pong
             cp -r $src $out/assets
           '';
         };
@@ -68,13 +72,12 @@
               minimal.cargo
               targets.${target}.latest.rust-std
             ];
-        in
-          (naersk.lib.${system}.override {
+          naerskWasm = naersk.lib.${system}.override {
             cargo = toolchain;
             rustc = toolchain;
-          })
-          .buildPackage
-          {
+          };
+        in
+          naerskWasm.buildPackage {
             src = ./.;
             CARGO_BUILD_TARGET = target;
             nativeBuildInputs = with pkgs; [
@@ -94,43 +97,33 @@
             phases = ["unpackPhase" "installPhase"];
             installPhase = ''
               mkdir -p $out
-              wasm-bindgen --out-dir $out --out-name pong --target web ${packages.pong-wasm}/bin/pong.wasm
+              wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
               cp index.html $out/index.html
               cp -r assets $out/assets
             '';
           };
 
         packages.pong-server = pkgs.writeShellScriptBin "run-pong-server" ''
-          ${pkgs.python3}/bin/python -m http.server --directory ${packages.pong-web}
+          ${pkgs.python3}/bin/python -m http.server --directory ${self.packages.${system}.pong-web}
         '';
 
-        defaultPackage = packages.pong;
+        defaultPackage = self.packages.pong;
 
         apps.pong = flake-utils.lib.mkApp {
-          drv = packages.pong;
+          drv = self.packages.pong;
         };
-        defaultApp = apps.pong;
+        defaultApp = self.apps.pong;
 
         devShell = pkgs.mkShell {
-          shellHook = ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.lib.makeLibraryPath (with pkgs; [
-              alsaLib
-              udev
-              vulkan-loader
-              libxkbcommon
-              wayland
-              freetype
-              fontconfig
-              libglvnd
-              xorg.libXcursor
-              xorg.libXext
-              xorg.libXrandr
-              xorg.libXi
-            ])}"'';
-          inputsFrom = [packages.pong-bin];
-          nativeBuildInputs = [
-            (toolchain.withComponents ["cargo" "rustc" "rust-src" "rustfmt" "clippy"])
-            pkgs.rust-analyzer
-          ];
+          shellHook = ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.lib.makeLibraryPath buildInputs}"'';
+          inputsFrom = [self.packages.${system}.pong-bin];
+          nativeBuildInputs =
+            [
+              (toolchain.withComponents ["cargo" "rustc" "rust-src" "rustfmt" "clippy"])
+              pkgs.rust-analyzer
+              pkgs.lldb
+            ]
+            ++ nativeBuildInputs;
         };
       }
     );

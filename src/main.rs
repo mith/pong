@@ -1,8 +1,10 @@
 use bevy::{
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
-    window::WindowMode,
-    utils::Duration
+    sprite::{
+        collide_aabb::{collide, Collision},
+        MaterialMesh2dBundle,
+    },
+    utils::Duration,
 };
 use iyes_loopless::prelude::*;
 
@@ -52,6 +54,8 @@ fn setup(
     mut commands: Commands,
     config: Res<Config>,
     asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
     windows: Res<Windows>,
 ) {
     let paddle_speed = config.paddle_speed;
@@ -108,7 +112,15 @@ fn setup(
                 .insert(Paddle {
                     speed: paddle_speed,
                 })
-                .insert(AiController);
+                .insert(AiController)
+                .with_children(|ai_paddle| {
+                    ai_paddle.spawn_bundle(MaterialMesh2dBundle {
+                        mesh: meshes.add(shape::Circle::new(1.).into()).into(),
+                        material: materials.add(ColorMaterial::from(Color::PURPLE)),
+                        transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+                        ..default()
+                    });
+                });
 
             parent
                 .spawn_bundle(SpriteBundle {
@@ -193,7 +205,6 @@ fn setup(
 }
 
 fn adjust_scale(
-    mut commands: Commands,
     config: Res<Config>,
     windows: Res<Windows>,
     mut projections: Query<&mut OrthographicProjection, With<Camera>>,
@@ -255,11 +266,13 @@ fn ai_input(
                 continue;
             }
 
-            if ball_transform.translation.y > paddle_transform.translation.y {
-                direction += 1.0;
-            }
-            if ball_transform.translation.y < paddle_transform.translation.y {
-                direction -= 1.0;
+            if (ball_transform.translation.y - paddle_transform.translation.y).abs() > 10.0 {
+                if ball_transform.translation.y > paddle_transform.translation.y {
+                    direction += 1.0;
+                }
+                if ball_transform.translation.y < paddle_transform.translation.y {
+                    direction -= 1.0;
+                }
             }
 
             let paddle_half_height = paddle_sprite
@@ -277,7 +290,10 @@ fn ai_input(
     }
 }
 
-fn ball_movement_system(time: Res<FixedTimestepInfo>, mut ball_query: Query<(&Ball, &mut Transform)>) {
+fn ball_movement_system(
+    time: Res<FixedTimestepInfo>,
+    mut ball_query: Query<(&Ball, &mut Transform)>,
+) {
     // clamp the timestep to stop the ball from escaping when the game starts
     let delta_seconds = f32::min(0.2, time.timestep().as_secs_f32());
 
@@ -316,24 +332,40 @@ fn ball_collision_system(
             }
         }
 
-        for (_paddle, transform, sprite) in &paddle_collider_query {
+        for (_paddle, paddle_transform, sprite) in &paddle_collider_query {
             let paddle_size = sprite.custom_size.expect("Paddle should have custom size");
             let collision = collide(
                 ball_transform.translation,
                 ball_size,
-                transform.translation,
+                paddle_transform.translation,
                 paddle_size,
             );
             if let Some(collision) = collision {
                 match collision {
-                    Collision::Right => velocity.x = velocity.x.abs(),
-                    Collision::Left => velocity.x = -velocity.x.abs(),
+                    Collision::Left | Collision::Right => {
+                        let angle = ball_transform.translation.angle_between(paddle_transform.translation);
+                        angled_collide(collision, velocity, angle, paddle_size);
+                    }
                     Collision::Top => velocity.y = velocity.y.abs(),
                     Collision::Bottom => velocity.y = -velocity.y.abs(),
                     _ => (),
                 }
             }
         }
+    }
+}
+
+fn angled_collide(collision: Collision, velocity: &mut Vec3, angle: f32, paddle_size: Vec2) {
+    match collision {
+        Collision::Left => {
+            velocity.x = -velocity.x.abs();
+            velocity.y = angle * paddle_size.y;
+        }
+        Collision::Right => {
+            velocity.x = velocity.x.abs();
+            velocity.y = angle * paddle_size.y;
+        }
+        _ => (),
     }
 }
 
@@ -393,6 +425,7 @@ fn main() {
     let mut fixedupdate = SystemStage::parallel();
     fixedupdate.add_system(ball_movement_system);
     fixedupdate.add_system(ball_collision_system);
+
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(Scoreboard { player: 0, ai: 0 })
@@ -416,7 +449,7 @@ fn main() {
         .add_stage_before(
             CoreStage::Update,
             "my_fixed_update",
-            FixedTimestepStage::from_stage(Duration::from_millis(4), fixedupdate)
+            FixedTimestepStage::from_stage(Duration::from_millis(4), fixedupdate),
         )
         .add_system_set(
             SystemSet::new()
@@ -425,4 +458,17 @@ fn main() {
                 .with_system(scoreboardsystem.after(ball_scoring_system)),
         )
         .run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // proptest! {
+    //     fn test_angled_collide(collision: bool, velocity: Vec3, angle: f32) {
+    //         let velocity = &mut velocity;
+    //         angled_collide(Collision::Left, velocity, angle, Vec2::new(20., 200.));
+    //     }
+    // }
 }
