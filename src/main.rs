@@ -344,28 +344,29 @@ fn ball_collision_system(
                 match collision {
                     Collision::Left | Collision::Right => {
                         let angle = ball_transform.translation.angle_between(paddle_transform.translation);
-                        angled_collide(collision, velocity, angle, paddle_size);
-                    }
+                        let mut force = angle * 3000.0;
+                        if paddle_transform.translation.y > ball_transform.translation.y {
+                            force = -force;
+                        }
+                        dbg!(angle, force);
+                        match collision {
+                            Collision::Left => {
+                                velocity.x = -velocity.x.abs();
+                                velocity.y = force;
+                            }
+                            Collision::Right => {
+                                velocity.x = velocity.x.abs();
+                                velocity.y = force;
+                            }
+                            _ => (),
+                        };
+                    },
                     Collision::Top => velocity.y = velocity.y.abs(),
                     Collision::Bottom => velocity.y = -velocity.y.abs(),
                     _ => (),
                 }
             }
         }
-    }
-}
-
-fn angled_collide(collision: Collision, velocity: &mut Vec3, angle: f32, paddle_size: Vec2) {
-    match collision {
-        Collision::Left => {
-            velocity.x = -velocity.x.abs();
-            velocity.y = angle * paddle_size.y;
-        }
-        Collision::Right => {
-            velocity.x = velocity.x.abs();
-            velocity.y = angle * paddle_size.y;
-        }
-        _ => (),
     }
 }
 
@@ -463,12 +464,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
 
-    // proptest! {
-    //     fn test_angled_collide(collision: bool, velocity: Vec3, angle: f32) {
-    //         let velocity = &mut velocity;
-    //         angled_collide(Collision::Left, velocity, angle, Vec2::new(20., 200.));
-    //     }
-    // }
+    #[test]
+    fn angled_collide_from_above() {
+        let mut velocity = Vec3 { x: -1.0, y: 1.0, z: 0.0 };
+        let angle = Vec3 { x: 0.0, y: 0.0, z: 0.0}.angle_between(Vec3 { x: 1.0, y: -1.0, z: 0.0 });
+        angled_collide(Collision::Left, &mut velocity, angle, Vec2::new(20., 200.));
+    }
 }
