@@ -216,12 +216,22 @@ fn adjust_scale(
     config: Res<Config>,
     windows: Res<Windows>,
     mut projections: Query<&mut OrthographicProjection, With<Camera>>,
+    mut player_score: Query<&mut Text, (With<PlayerController>, Without<AiController>)>,
+    mut ai_score: Query<&mut Text, (With<AiController>, Without<PlayerController>)>,
 ) {
     let window = windows.primary();
     let height_ratio = config.court_size[0] / window.height();
 
     for mut ortho in projections.iter_mut() {
         ortho.scale = height_ratio * 0.8;
+    }
+
+    for mut score in &mut ai_score {
+        score.sections[0].style.font_size = window.height() * 0.07;
+    }
+
+    for mut score in &mut player_score {
+        score.sections[0].style.font_size = window.height() * 0.07;
     }
 }
 
@@ -439,6 +449,10 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(WindowDescriptor {
+            fit_canvas_to_parent: true,
+            ..default()
+        })
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.0,
