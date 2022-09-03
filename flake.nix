@@ -109,6 +109,7 @@
 
         apps.pong = flake-utils.lib.mkApp {
           drv = self.packages.${system}.pong;
+          exePath = "/pong";
         };
         defaultApp = self.apps.${system}.pong;
 
