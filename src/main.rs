@@ -75,7 +75,7 @@ fn setup(
     commands
         .spawn_bundle(SpriteBundle {
             sprite: Sprite {
-                color: Color::rgb(0.3, 0.3, 0.3),
+                color: Color::rgb(0.0, 0.0, 0.0),
                 custom_size: Some(Vec2::from_array(config.court_size)),
                 ..default()
             },
@@ -83,13 +83,31 @@ fn setup(
         })
         .insert(Court)
         .with_children(|parent| {
+            let num_dashes = (config.court_size[1] / 30.0) as i32;
+            for y in 0..num_dashes {
+                parent.spawn_bundle(SpriteBundle {
+                    transform: Transform::from_translation(Vec3::new(
+                        0.0,
+                        y as f32 * 30.0 - config.court_size[1] / 2.0 + 20.0,
+                        1.0,
+                    )),
+                    sprite: Sprite {
+                        color: Color::rgb(1.0, 1.0, 1.0),
+                        custom_size: Some(Vec2::new(5.0, 12.0)),
+                        ..default()
+                    },
+                    ..default()
+                });
+            }
+
+            let paddle_size = Vec2::new(17.0, 80.0);
             let player_distance = config.court_size[0] * config.players_distance_percentage;
             parent
                 .spawn_bundle(SpriteBundle {
                     transform: Transform::from_translation(Vec3::new(-player_distance, 0.0, 1.0)),
                     sprite: Sprite {
-                        color: Color::rgb(0.5, 0.5, 1.0),
-                        custom_size: Some(Vec2::new(20.0, 130.0)),
+                        color: Color::rgb(1.0, 1.0, 1.0),
+                        custom_size: Some(paddle_size),
                         ..default()
                     },
                     ..default()
@@ -103,8 +121,8 @@ fn setup(
                 .spawn_bundle(SpriteBundle {
                     transform: Transform::from_translation(Vec3::new(player_distance, 0.0, 1.0)),
                     sprite: Sprite {
-                        color: Color::rgb(0.5, 0.5, 1.0),
-                        custom_size: Some(Vec2::new(20.0, 130.0)),
+                        color: Color::rgb(1.0, 1.0, 1.0),
+                        custom_size: Some(paddle_size),
                         ..default()
                     },
                     ..default()
@@ -112,22 +130,14 @@ fn setup(
                 .insert(Paddle {
                     speed: paddle_speed,
                 })
-                .insert(AiController)
-                .with_children(|ai_paddle| {
-                    ai_paddle.spawn_bundle(MaterialMesh2dBundle {
-                        mesh: meshes.add(shape::Circle::new(1.).into()).into(),
-                        material: materials.add(ColorMaterial::from(Color::PURPLE)),
-                        transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-                        ..default()
-                    });
-                });
+                .insert(AiController);
 
             parent
                 .spawn_bundle(SpriteBundle {
                     transform: Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
                     sprite: Sprite {
-                        color: Color::rgb(1.0, 0.5, 0.5),
-                        custom_size: Some(Vec2::new(30.0, 30.0)),
+                        color: Color::rgb(1.0, 1.0, 1.0),
+                        custom_size: Some(Vec2::new(20.0, 20.0)),
                         ..default()
                     },
                     ..default()
@@ -137,10 +147,10 @@ fn setup(
                 });
         });
 
-    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+    let font = asset_server.load("fonts/PublicPixel-z84yD.ttf");
     let text_style = TextStyle {
         font,
-        font_size: 35.0,
+        font_size: 80.0,
         ..default()
     };
 
@@ -168,13 +178,12 @@ fn setup(
                 parent
                     .spawn_bundle(
                         TextBundle::from_sections([
-                            TextSection::new("Player: ", text_style.clone()),
                             TextSection::from_style(text_style.clone()),
                         ])
                         .with_style(Style {
                             position_type: PositionType::Absolute,
                             position: UiRect {
-                                top: Val::Px(4.0),
+                                top: Val::Px(16.0),
                                 left: Val::Px(4.0),
                                 ..default()
                             },
@@ -185,14 +194,13 @@ fn setup(
                 parent
                     .spawn_bundle(
                         TextBundle::from_sections([
-                            TextSection::new("AI: ", text_style.clone()),
                             TextSection::from_style(text_style.clone()),
                         ])
                         .with_style(Style {
                             align_content: AlignContent::FlexEnd,
                             position_type: PositionType::Absolute,
                             position: UiRect {
-                                top: Val::Px(4.0),
+                                top: Val::Px(16.0),
                                 right: Val::Px(4.0),
                                 ..default()
                             },
@@ -213,7 +221,7 @@ fn adjust_scale(
     let height_ratio = config.court_size[0] / window.height();
 
     for mut ortho in projections.iter_mut() {
-        ortho.scale = height_ratio * 1.2;
+        ortho.scale = height_ratio * 0.8;
     }
 }
 
@@ -343,12 +351,13 @@ fn ball_collision_system(
             if let Some(collision) = collision {
                 match collision {
                     Collision::Left | Collision::Right => {
-                        let angle = ball_transform.translation.angle_between(paddle_transform.translation);
+                        let angle = ball_transform
+                            .translation
+                            .angle_between(paddle_transform.translation);
                         let mut force = angle * 3000.0;
                         if paddle_transform.translation.y > ball_transform.translation.y {
                             force = -force;
                         }
-                        dbg!(angle, force);
                         match collision {
                             Collision::Left => {
                                 velocity.x = -velocity.x.abs();
@@ -360,7 +369,7 @@ fn ball_collision_system(
                             }
                             _ => (),
                         };
-                    },
+                    }
                     Collision::Top => velocity.y = velocity.y.abs(),
                     Collision::Bottom => velocity.y = -velocity.y.abs(),
                     _ => (),
@@ -415,10 +424,10 @@ fn scoreboardsystem(
     mut ai_scoreboard: Query<&mut Text, (With<AiController>, Without<PlayerController>)>,
 ) {
     for mut text in player_scoreboard.iter_mut() {
-        text.sections[1].value = format!("{}", scoreboard.player);
+        text.sections[0].value = format!("{}", scoreboard.player);
     }
     for mut text in ai_scoreboard.iter_mut() {
-        text.sections[1].value = format!("{}", scoreboard.ai);
+        text.sections[0].value = format!("{}", scoreboard.ai);
     }
 }
 
@@ -429,10 +438,11 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
+        .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.0,
-            court_size: [1000.0, 1000.0],
+            court_size: [1600.0, 1000.0],
             players_distance_percentage: 0.3,
             ai_handicap: AiHandicap {
                 view_percentage: 0.5,
@@ -467,8 +477,21 @@ mod tests {
 
     #[test]
     fn angled_collide_from_above() {
-        let mut velocity = Vec3 { x: -1.0, y: 1.0, z: 0.0 };
-        let angle = Vec3 { x: 0.0, y: 0.0, z: 0.0}.angle_between(Vec3 { x: 1.0, y: -1.0, z: 0.0 });
+        let mut velocity = Vec3 {
+            x: -1.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let angle = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }
+        .angle_between(Vec3 {
+            x: 1.0,
+            y: -1.0,
+            z: 0.0,
+        });
         angled_collide(Collision::Left, &mut velocity, angle, Vec2::new(20., 200.));
     }
 }
