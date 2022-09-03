@@ -80,9 +80,7 @@
           naerskWasm.buildPackage {
             src = ./.;
             CARGO_BUILD_TARGET = target;
-            nativeBuildInputs = with pkgs; [
-              pkg-config
-            ];
+            nativeBuildInputs = nativeBuildInputs;
           };
 
         packages.pong-web = let
