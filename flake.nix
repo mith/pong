@@ -110,7 +110,7 @@
         apps.pong = flake-utils.lib.mkApp {
           drv = self.packages.${system}.pong;
         };
-        defaultApp = self.apps.pong;
+        defaultApp = self.apps.${system}.pong;
 
         devShell = pkgs.mkShell {
           shellHook = ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.lib.makeLibraryPath buildInputs}"'';
