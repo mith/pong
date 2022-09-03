@@ -108,7 +108,7 @@
         defaultPackage = self.packages.pong;
 
         apps.pong = flake-utils.lib.mkApp {
-          drv = self.packages.pong;
+          drv = self.packages.${system}.pong;
         };
         defaultApp = self.apps.pong;
 
