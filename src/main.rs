@@ -150,7 +150,7 @@ fn setup(
     let font = asset_server.load("fonts/PublicPixel-z84yD.ttf");
     let text_style = TextStyle {
         font,
-        font_size: 80.0,
+        font_size: window.height() * 0.15,
         ..default()
     };
 
