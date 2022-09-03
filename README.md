@@ -10,7 +10,7 @@ Play the game [here](https://mith.github.io/pong)
 
 ### Nix
 
-To run the game locally using Nix, run the following command:
+To run the game locally using Nix, use the following command:
 ```
 nix run github:mith/pong
 ```
