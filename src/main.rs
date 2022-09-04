@@ -1,9 +1,6 @@
 use bevy::{
     prelude::*,
-    sprite::{
-        collide_aabb::{collide, Collision},
-        MaterialMesh2dBundle,
-    },
+    sprite::collide_aabb::{collide, Collision},
     utils::Duration,
 };
 use iyes_loopless::prelude::*;
@@ -43,7 +40,6 @@ struct Scoreboard {
 #[derive(SystemLabel)]
 enum GameloopStages {
     Input,
-    Physics,
     Scoring,
 }
 
@@ -54,8 +50,6 @@ fn setup(
     mut commands: Commands,
     config: Res<Config>,
     asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     windows: Res<Windows>,
 ) {
     let paddle_speed = config.paddle_speed;
@@ -483,29 +477,4 @@ fn main() {
                 .with_system(scoreboardsystem.after(ball_scoring_system)),
         )
         .run();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn angled_collide_from_above() {
-        let mut velocity = Vec3 {
-            x: -1.0,
-            y: 1.0,
-            z: 0.0,
-        };
-        let angle = Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        }
-        .angle_between(Vec3 {
-            x: 1.0,
-            y: -1.0,
-            z: 0.0,
-        });
-        angled_collide(Collision::Left, &mut velocity, angle, Vec2::new(20., 200.));
-    }
 }
