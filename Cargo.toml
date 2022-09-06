@@ -7,9 +7,25 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.8", features = ["wayland"] }
+# bevy = { version = "0.8", features = ["wayland"] }
 iyes_loopless = "0.7.0"
 
-[dev-dependencies]
-proptest = "1.0.0"
+[dependencies.bevy]
+version = "0.8"
+# Disable the default features if there are any that you do not want
+default-features = false
+features = [
+	# "animation",
+	"bevy_asset",
+	# "bevy_audio",
+	# "bevy_gilrs",
+	# "bevy_scene",
+	"bevy_winit",
+	"render",
+	# "png",
+	# "hdr",
+	# "vorbis",
+	"x11",
+	"filesystem_watcher"
+	]
 
