@@ -36,13 +36,17 @@ jobs:
             access-tokens = github.com${{ secrets.GITHUB_TOKEN }}
       - name: Build
         run: nix build .#pong-web -L
+      - name: Ownership work-around
+        run: |
+          mkdir build
+          cp -r --dereference --no-preserve=mode,ownership result public
       - name: Setup Pages
         uses: actions/configure-pages@v2
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
           # Upload entire result directory
-          path: './result'
+          path: './public'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
