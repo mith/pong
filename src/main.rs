@@ -57,6 +57,11 @@ fn setup(
     let window = windows.primary();
 
     let height_ratio = window.height() / config.court_size[0];
+    if !window.is_focused() {
+        info!("Window is not focused!");
+    } else {
+        info!("Window is focused.")
+    }
 
     commands.spawn_bundle(Camera2dBundle {
         projection: OrthographicProjection {
