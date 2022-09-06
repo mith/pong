@@ -9,8 +9,8 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    naersk = {
-      url = "github:nix-community/naersk";
+    crane = {
+      url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -20,14 +20,14 @@
     nixpkgs,
     flake-utils,
     fenix,
-    naersk,
+    crane,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages."${system}";
         toolchain = fenix.packages.${system}.stable;
-        naersk-lib = naersk.lib."${system}";
+        crane-lib = crane.lib."${system}";
         buildInputs = with pkgs; [
           libxkbcommon
           alsaLib
@@ -47,9 +47,24 @@
           pkg-config
         ];
       in {
-        packages.pong-bin = naersk-lib.buildPackage {
+        packages.pong-bin = crane-lib.buildPackage {
           name = "pong-bin";
-          root = ./.;
+          src = builtins.path {
+            path = ./.;
+            name = "pong-src";
+            filter = path: type: nixpkgs.lib.all
+            (n: builtins.baseNameOf path != n)
+            [
+              "web"
+              "assets"
+              "flake.nix"
+              "flake.lock"
+              "README.md"
+              ".envrc"
+              ".direnv"
+              ".gitignore"
+            ];
+          };
           buildInputs = buildInputs;
           nativeBuildInputs = nativeBuildInputs;
         };
@@ -72,15 +87,29 @@
               minimal.cargo
               targets.${target}.latest.rust-std
             ];
-          naerskWasm = naersk.lib.${system}.override {
-            cargo = toolchain;
-            rustc = toolchain;
-          };
+          craneWasm = (crane.mkLib pkgs).overrideToolchain toolchain;
         in
-          naerskWasm.buildPackage {
-            src = ./.;
+          craneWasm.buildPackage {
+            src = builtins.path {
+              path = ./.;
+              name = "pong-src";
+              filter = path: type: nixpkgs.lib.all
+              (n: builtins.baseNameOf path != n)
+              [
+                "web"
+                "assets"
+                "flake.nix"
+                "flake.lock"
+                "README.md"
+                ".envrc"
+                ".direnv"
+                ".gitignore"
+              ];
+            };
             CARGO_BUILD_TARGET = target;
+            CARGO_PROFILE = "release";
             nativeBuildInputs = nativeBuildInputs;
+            doCheck = false;
           };
 
         packages.pong-web = let
@@ -96,7 +125,7 @@
             installPhase = ''
               mkdir -p $out
               wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
-              cp index.html $out/index.html
+              cp web/index.html $out/index.html
               cp -r assets $out/assets
             '';
           };
