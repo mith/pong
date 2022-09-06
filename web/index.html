@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8"/>
     <style>
+      @font-face {
+        font-family: 'PublicPixel';
+        src: url("/assets/fonts/PublicPixel-z84yD.ttf");
+      }
       html {
         height: 100%;
       }
@@ -10,14 +14,59 @@
         background-color: black;
         display: grid;
         place-items: center;
-        height: 100%
+        height: 100%;
+      }
+      canvas {
+        grid-area: 1 / 1 / 1 / 1;
+      }
+      #focus-message {
         color: white;
+        z-index: 2;
+        text-align: center;
+        font-size: 1.5em;
+        grid-area: 1 / 1 / 1 / 1;
+        animation: blinker 1s linear infinite;
+        font-family: "PublicPixel";
+      }
+      @keyframes blinker {
+        50% {
+          opacity: 0;
+        }
       }
     </style>
   </head>
   <script type="module">
-    import init from './pong.js'
-    init()
+    console.log('Running focus message setup.');
+    const targetNode = document.querySelector('body');
+    const config = { childList: true };
+    const callback = (mutationlist, observer) => {
+      for (const mutation of mutationlist) {
+        if (mutation.type == 'childList') {
+          console.log('A child has been added or removed');
+          if (mutation.addedNodes[0].localName == 'canvas') {
+            const canvas = mutation.addedNodes[0];
+            const msgNode = document.createElement("p");
+            msgNode.textContent = 'Click to take control';
+            msgNode.setAttribute('id', 'focus-message');
+            document.body.appendChild(msgNode);
+            canvas.addEventListener('focus', (event) => {
+              const msg = document.querySelector('#focus-message');
+              msg.style.display = 'none';
+            });
+          } else {
+            console.log('Something else was added or removed', mutation.addedNodes);
+          }
+        } else {
+          console.log('Something else happened', mutation);
+        }
+      }
+    };
+    const observer = new MutationObserver(callback);
+    observer.observe(targetNode, config);
+
+    console.log('Initializing game.')
+
+    import init from './pong.js';
+    init();
   </script>
-  <p id="focus-message">Click to take control</p>
 </html>

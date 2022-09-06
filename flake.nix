@@ -125,7 +125,7 @@
             installPhase = ''
               mkdir -p $out
               wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
-              cp web/index.html $out/index.html
+              cp web/* $out/
               cp -r assets $out/assets
             '';
           };
