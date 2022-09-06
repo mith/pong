@@ -74,7 +74,7 @@ fn setup(
     commands
         .spawn_bundle(SpriteBundle {
             sprite: Sprite {
-                color: Color::rgb(0.0, 0.0, 0.0),
+                color: Color::BLACK,
                 custom_size: Some(Vec2::from_array(config.court_size)),
                 ..default()
             },
@@ -91,7 +91,7 @@ fn setup(
                         1.0,
                     )),
                     sprite: Sprite {
-                        color: Color::rgb(1.0, 1.0, 1.0),
+                        color: Color::WHITE,
                         custom_size: Some(Vec2::new(5.0, 12.0)),
                         ..default()
                     },
@@ -105,7 +105,7 @@ fn setup(
                 .spawn_bundle(SpriteBundle {
                     transform: Transform::from_translation(Vec3::new(-player_distance, 0.0, 1.0)),
                     sprite: Sprite {
-                        color: Color::rgb(1.0, 1.0, 1.0),
+                        color: Color::WHITE,
                         custom_size: Some(paddle_size),
                         ..default()
                     },
@@ -135,7 +135,7 @@ fn setup(
                 .spawn_bundle(SpriteBundle {
                     transform: Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
                     sprite: Sprite {
-                        color: Color::rgb(1.0, 1.0, 1.0),
+                        color: Color::WHITE,
                         custom_size: Some(Vec2::new(20.0, 20.0)),
                         ..default()
                     },
@@ -277,7 +277,7 @@ fn ai_input(
         let mut direction = 0.0;
         for (ball, ball_transform) in ball_query.iter() {
             if ball.velocity.x < 0.0
-                || f32::abs(ball_transform.translation.x - paddle_transform.translation.x)
+                || (ball_transform.translation.x - paddle_transform.translation.x).abs()
                     > view_distance_px
             {
                 continue;
