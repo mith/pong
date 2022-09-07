@@ -28,6 +28,22 @@
         pkgs = nixpkgs.legacyPackages."${system}";
         toolchain = fenix.packages.${system}.stable;
         crane-lib = crane.lib."${system}";
+        pong-src = builtins.path {
+          path = ./.;
+          name = "pong-src";
+          filter = path: type: nixpkgs.lib.all
+          (n: builtins.baseNameOf path != n)
+          [
+            "web"
+            "assets"
+            "flake.nix"
+            "flake.lock"
+            "README.md"
+            ".envrc"
+            ".direnv"
+            ".gitignore"
+          ];
+        };
         buildInputs = with pkgs; [
           libxkbcommon
           alsaLib
@@ -49,22 +65,7 @@
       in {
         packages.pong-bin = crane-lib.buildPackage {
           name = "pong-bin";
-          src = builtins.path {
-            path = ./.;
-            name = "pong-src";
-            filter = path: type: nixpkgs.lib.all
-            (n: builtins.baseNameOf path != n)
-            [
-              "web"
-              "assets"
-              "flake.nix"
-              "flake.lock"
-              "README.md"
-              ".envrc"
-              ".direnv"
-              ".gitignore"
-            ];
-          };
+          src = pong-src; 
           buildInputs = buildInputs;
           nativeBuildInputs = nativeBuildInputs;
         };
@@ -90,22 +91,7 @@
           craneWasm = (crane.mkLib pkgs).overrideToolchain toolchain;
         in
           craneWasm.buildPackage {
-            src = builtins.path {
-              path = ./.;
-              name = "pong-src";
-              filter = path: type: nixpkgs.lib.all
-              (n: builtins.baseNameOf path != n)
-              [
-                "web"
-                "assets"
-                "flake.nix"
-                "flake.lock"
-                "README.md"
-                ".envrc"
-                ".direnv"
-                ".gitignore"
-              ];
-            };
+            src = pong-src;
             CARGO_BUILD_TARGET = target;
             CARGO_PROFILE = "release";
             nativeBuildInputs = nativeBuildInputs;
@@ -134,7 +120,7 @@
           ${pkgs.python3}/bin/python -m http.server --directory ${self.packages.${system}.pong-web}
         '';
 
-        defaultPackage = self.packages.pong;
+        defaultPackage = self.packages.${system}.pong;
 
         apps.pong = flake-utils.lib.mkApp {
           drv = self.packages.${system}.pong;
