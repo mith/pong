@@ -29,3 +29,22 @@ features = [
 	"filesystem_watcher"
 	]
 
+[target.'cfg(target_arch = "wasm32-unknown-unknown")'.dependencies.bevy]
+version = "0.8"
+# Disable the default features if there are any that you do not want
+default-features = false
+features = [
+	# "animation",
+	"bevy_asset",
+	# "bevy_audio",
+	# "bevy_gilrs",
+	# "bevy_scene",
+	"bevy_winit",
+	"render",
+	# "png",
+	# "hdr",
+	# "vorbis",
+	# "x11",
+	# "filesystem_watcher"
+	]
+
