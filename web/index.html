@@ -15,6 +15,7 @@
         display: grid;
         place-items: center;
         height: 100%;
+        margin: 0;
       }
       canvas {
         grid-area: 1 / 1 / 1 / 1;
@@ -35,38 +36,21 @@
       }
     </style>
   </head>
-  <script type="module">
-    console.log('Running focus message setup.');
-    const targetNode = document.querySelector('body');
-    const config = { childList: true };
-    const callback = (mutationlist, observer) => {
-      for (const mutation of mutationlist) {
-        if (mutation.type == 'childList') {
-          console.log('A child has been added or removed');
-          if (mutation.addedNodes[0].localName == 'canvas') {
-            const canvas = mutation.addedNodes[0];
-            const msgNode = document.createElement("p");
-            msgNode.textContent = 'Click to take control';
-            msgNode.setAttribute('id', 'focus-message');
-            document.body.appendChild(msgNode);
-            canvas.addEventListener('focus', (event) => {
-              const msg = document.querySelector('#focus-message');
-              msg.style.display = 'none';
-            });
-          } else {
-            console.log('Something else was added or removed', mutation.addedNodes);
-          }
-        } else {
-          console.log('Something else happened', mutation);
-        }
-      }
-    };
-    const observer = new MutationObserver(callback);
-    observer.observe(targetNode, config);
+  <body>
+    <p id="focus-message">Click to take control</p>
+    <canvas width="1280" height="720"></canvas>
+    <script type="module">
+      console.log('Running focus message setup.');
+      const canvas = document.querySelector('canvas');
+      canvas.addEventListener('focus', (event) => {
+        const msg = document.querySelector('#focus-message');
+        msg.style.display = 'none';
+      });
 
-    console.log('Initializing game.')
+      console.log('Initializing game.')
 
-    import init from './pong.js';
-    init();
-  </script>
+      import init from './pong.js';
+      init();
+    </script>
+  </body>
 </html>

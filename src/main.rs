@@ -446,12 +446,13 @@ fn main() {
     fixedupdate.add_system(ball_collision_system);
 
     App::new()
-        .add_plugins(DefaultPlugins)
-        .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(WindowDescriptor {
-            fit_canvas_to_parent: true,
+            canvas: Some("canvas".into()),
             ..default()
         })
+        .add_plugins(DefaultPlugins)
+        .insert_resource(ClearColor(Color::BLACK))
+        
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.0,
