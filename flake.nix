@@ -12,6 +12,7 @@
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
   };
 
   outputs = inputs @ {
@@ -30,18 +31,19 @@
         pong-src = builtins.path {
           path = ./.;
           name = "pong-src";
-          filter = path: type: nixpkgs.lib.all
-          (n: builtins.baseNameOf path != n)
-          [
-            "web"
-            "assets"
-            "flake.nix"
-            "flake.lock"
-            "README.md"
-            ".envrc"
-            ".direnv"
-            ".gitignore"
-          ];
+          filter = path: type:
+            nixpkgs.lib.all
+            (n: builtins.baseNameOf path != n)
+            [
+              "web"
+              "assets"
+              "flake.nix"
+              "flake.lock"
+              "README.md"
+              ".envrc"
+              ".direnv"
+              ".gitignore"
+            ];
         };
         buildInputs = with pkgs; [
           libxkbcommon
@@ -64,9 +66,9 @@
       in {
         packages.pong-bin = crane-lib.buildPackage {
           name = "pong-bin";
-          src = pong-src; 
-          buildInputs = buildInputs;
-          nativeBuildInputs = nativeBuildInputs;
+          src = pong-src;
+          inherit buildInputs;
+          inherit nativeBuildInputs;
         };
         packages.pong = pkgs.stdenv.mkDerivation {
           name = "pong";
@@ -93,11 +95,11 @@
             src = pong-src;
             CARGO_BUILD_TARGET = target;
             CARGO_PROFILE = "release";
-            nativeBuildInputs = nativeBuildInputs;
+            inherit nativeBuildInputs;
             doCheck = false;
           };
 
-        packages.pong-web = 
+        packages.pong-web =
           pkgs.stdenv.mkDerivation {
             name = "pong-web";
             src = ./.;
@@ -125,8 +127,23 @@
         };
         defaultApp = self.apps.${system}.pong;
 
+        checks = {
+          pre-commit-check = inputs.pre-commit-hooks.lib.${system}.run {
+            src = ./.;
+            hooks = {
+              alejandra.enable = true;
+              statix.enable = true;
+              rustfmt.enable = true;
+              clippy.enable = true;
+            };
+          };
+        };
+
         devShell = pkgs.mkShell {
-          shellHook = ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.lib.makeLibraryPath buildInputs}"'';
+          shellHook = ''
+            export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.lib.makeLibraryPath buildInputs}"
+            ${self.checks.${system}.pre-commit-check.shellHook}
+          '';
           inputsFrom = [self.packages.${system}.pong-bin];
           nativeBuildInputs =
             [
