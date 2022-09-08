@@ -3,7 +3,6 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs-local.url = "github:mith/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
       url = "github:nix-community/fenix";
@@ -98,14 +97,12 @@
             doCheck = false;
           };
 
-        packages.pong-web = let
-          local = import inputs.nixpkgs-local {system = "${system}";};
-        in
+        packages.pong-web = 
           pkgs.stdenv.mkDerivation {
             name = "pong-web";
             src = ./.;
             nativeBuildInputs = [
-              local.wasm-bindgen-cli
+              pkgs.wasm-bindgen-cli
             ];
             phases = ["unpackPhase" "installPhase"];
             installPhase = ''
