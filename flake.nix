@@ -84,9 +84,9 @@
           target = "wasm32-unknown-unknown";
           toolchain = with fenix.packages.${system};
             combine [
-              minimal.rustc
-              minimal.cargo
-              targets.${target}.latest.rust-std
+              stable.rustc
+              stable.cargo
+              targets.${target}.stable.rust-std
             ];
           craneWasm = (crane.mkLib pkgs).overrideToolchain toolchain;
         in
