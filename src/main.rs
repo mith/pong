@@ -176,35 +176,31 @@ fn setup(
             .with_children(|parent| {
                 parent
                     .spawn_bundle(
-                        TextBundle::from_sections([
-                            TextSection::from_style(text_style.clone()),
-                        ])
-                        .with_style(Style {
-                            position_type: PositionType::Absolute,
-                            position: UiRect {
-                                top: Val::Px(16.0),
-                                left: Val::Px(4.0),
+                        TextBundle::from_sections([TextSection::from_style(text_style.clone())])
+                            .with_style(Style {
+                                position_type: PositionType::Absolute,
+                                position: UiRect {
+                                    top: Val::Px(16.0),
+                                    left: Val::Px(4.0),
+                                    ..default()
+                                },
                                 ..default()
-                            },
-                            ..default()
-                        }),
+                            }),
                     )
                     .insert(PlayerController);
                 parent
                     .spawn_bundle(
-                        TextBundle::from_sections([
-                            TextSection::from_style(text_style.clone()),
-                        ])
-                        .with_style(Style {
-                            align_content: AlignContent::FlexEnd,
-                            position_type: PositionType::Absolute,
-                            position: UiRect {
-                                top: Val::Px(16.0),
-                                right: Val::Px(4.0),
+                        TextBundle::from_sections([TextSection::from_style(text_style.clone())])
+                            .with_style(Style {
+                                align_content: AlignContent::FlexEnd,
+                                position_type: PositionType::Absolute,
+                                position: UiRect {
+                                    top: Val::Px(16.0),
+                                    right: Val::Px(4.0),
+                                    ..default()
+                                },
                                 ..default()
-                            },
-                            ..default()
-                        }),
+                            }),
                     )
                     .insert(AiController);
             });
@@ -320,19 +316,32 @@ fn ball_movement_system(
 }
 
 fn ball_collision_system(
-    mut ball_query: Query<(&mut Ball, &Transform, &Sprite)>,
+    mut ball_query: Query<(&mut Ball, &mut Transform, &Sprite), (Without<Court>, Without<Paddle>)>,
     court_collider_query: Query<(&Court, &Transform, &Sprite)>,
     paddle_collider_query: Query<(&Paddle, &Transform, &Sprite)>,
 ) {
-    for (mut ball, ball_transform, sprite) in ball_query.iter_mut() {
+    for (mut ball, mut ball_transform, sprite) in ball_query.iter_mut() {
         let ball_size = sprite.custom_size.expect("Ball should have custom size");
         let velocity = &mut ball.velocity;
 
         // check collision with court top and bottom
-        for (_court, court_transform, sprite) in court_collider_query.iter() {
-            let other_size = sprite
+        for (_court, court_transform, court_sprite) in court_collider_query.iter() {
+            let other_size = court_sprite
                 .custom_size
                 .expect("Collider should have custom size");
+
+            // Sometimes the ball clips through a wall, here we clamp the position to within the
+            // court bounds
+            let half_size = other_size / 2.0;
+            ball_transform.translation.x = ball_transform
+                .translation
+                .x
+                .clamp(-half_size.x, half_size.x);
+            ball_transform.translation.y = ball_transform
+                .translation
+                .y
+                .clamp(-half_size.y, half_size.y);
+
             let collision = collide(
                 ball_transform.translation,
                 ball_size,
@@ -349,8 +358,10 @@ fn ball_collision_system(
             }
         }
 
-        for (_paddle, paddle_transform, sprite) in &paddle_collider_query {
-            let paddle_size = sprite.custom_size.expect("Paddle should have custom size");
+        for (_paddle, paddle_transform, paddle_sprite) in &paddle_collider_query {
+            let paddle_size = paddle_sprite
+                .custom_size
+                .expect("Paddle should have custom size");
             let collision = collide(
                 ball_transform.translation,
                 ball_size,
@@ -452,7 +463,6 @@ fn main() {
         })
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::BLACK))
-        
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.0,
