@@ -28,6 +28,7 @@ struct Config {
     court_size: [f32; 2],
     players_distance_percentage: f32,
     paddle_speed: f32,
+    ball_speed: f32,
     ai_handicap: AiHandicap,
 }
 
@@ -263,11 +264,11 @@ fn player_serve(
         state.set(PongStage::Playing).unwrap();
         for (mut ball, _ball_transform) in &mut ball_query {
             if keyboard_input.pressed(KeyCode::Up) {
-                ball.velocity = 800. * Vec3::new(1., 1., 0.).normalize();
+                ball.velocity = config.ball_speed * Vec3::new(1., 1., 0.).normalize();
             } else if keyboard_input.pressed(KeyCode::Down) {
-                ball.velocity = 800. * Vec3::new(1., -1., 0.).normalize();
+                ball.velocity = config.ball_speed * Vec3::new(1., -1., 0.).normalize();
             } else {
-                ball.velocity = 800. * Vec3::new(1., 0., 0.).normalize();
+                ball.velocity = config.ball_speed * Vec3::new(1., 0., 0.).normalize();
             }
         }
     }
@@ -297,7 +298,7 @@ fn ai_serve(
     if rand::random() {
         state.set(PongStage::Playing).unwrap();
         for (mut ball, _ball_transform) in &mut ball_query {
-            ball.velocity = 800. * Vec3::new(-1., 0., 0.).normalize();
+            ball.velocity = config.ball_speed * Vec3::new(-1., 0., 0.).normalize();
         }
     }
 }
@@ -531,8 +532,9 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
-            paddle_speed: 1000.0,
-            court_size: [1600.0, 1000.0],
+            paddle_speed: 1000.,
+            ball_speed: 800.,
+            court_size: [1600., 1000.],
             players_distance_percentage: 0.3,
             ai_handicap: AiHandicap {
                 view_percentage: 0.5,
