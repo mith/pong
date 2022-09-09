@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iyes_loopless = "0.7.0"
+rand = { version = "0.8.5", features = ["alloc"] }
 
 [dependencies.bevy]
 version = "0.8"

@@ -1,9 +1,7 @@
 use bevy::{
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
-    utils::Duration,
 };
-use iyes_loopless::prelude::*;
 
 #[derive(Component)]
 struct PlayerController;
@@ -41,6 +39,7 @@ struct Scoreboard {
 enum GameloopStages {
     Input,
     Scoring,
+    Physics,
 }
 
 #[derive(Component)]
@@ -303,12 +302,9 @@ fn ai_input(
     }
 }
 
-fn ball_movement_system(
-    time: Res<FixedTimestepInfo>,
-    mut ball_query: Query<(&Ball, &mut Transform)>,
-) {
+fn ball_movement_system(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>) {
     // clamp the timestep to stop the ball from escaping when the game starts
-    let delta_seconds = f32::min(0.2, time.timestep().as_secs_f32());
+    let delta_seconds = f32::min(0.2, time.delta_seconds());
 
     for (ball, mut transform) in ball_query.iter_mut() {
         transform.translation += ball.velocity * delta_seconds;
@@ -452,10 +448,6 @@ fn scoreboardsystem(
 }
 
 fn main() {
-    let mut fixedupdate = SystemStage::parallel();
-    fixedupdate.add_system(ball_movement_system);
-    fixedupdate.add_system(ball_collision_system);
-
     App::new()
         .insert_resource(WindowDescriptor {
             canvas: Some("canvas".into()),
@@ -476,19 +468,21 @@ fn main() {
         .add_system_set(
             SystemSet::new()
                 .label(GameloopStages::Input)
-                .before(GameloopStages::Scoring)
                 .with_system(keyboard_input)
                 .with_system(ai_input)
                 .with_system(adjust_scale),
         )
-        .add_stage_before(
-            CoreStage::Update,
-            "my_fixed_update",
-            FixedTimestepStage::from_stage(Duration::from_millis(4), fixedupdate),
+        .add_system_set(
+            SystemSet::new()
+                .label(GameloopStages::Physics)
+                .after(GameloopStages::Input)
+                .with_system(ball_movement_system)
+                .with_system(ball_collision_system),
         )
         .add_system_set(
             SystemSet::new()
                 .label(GameloopStages::Scoring)
+                .after(GameloopStages::Physics)
                 .with_system(ball_scoring_system)
                 .with_system(scoreboardsystem.after(ball_scoring_system)),
         )
