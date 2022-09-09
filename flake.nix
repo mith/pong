@@ -134,7 +134,13 @@
               alejandra.enable = true;
               statix.enable = true;
               rustfmt.enable = true;
-              clippy.enable = true;
+              clippy = {
+                enable = true;
+                entry = let
+                  rust = toolchain.withComponents ["clippy"];
+                in
+                  pkgs.lib.mkForce "${rust}/bin/cargo-clippy clippy";
+              };
             };
           };
         };
