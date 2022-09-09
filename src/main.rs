@@ -12,6 +12,7 @@ struct AiController;
 #[derive(Debug, Component)]
 struct Paddle {
     speed: f32,
+    direction: Vec2,
 }
 
 #[derive(Component)]
@@ -33,6 +34,18 @@ struct Config {
 struct Scoreboard {
     player: usize,
     ai: usize,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum Controller {
+    Player,
+    AI,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum PongStage {
+    Serve(Controller),
+    Playing,
 }
 
 #[derive(SystemLabel)]
@@ -112,6 +125,7 @@ fn setup(
                 })
                 .insert(Paddle {
                     speed: paddle_speed,
+                    direction: Vec2::new(0., 0.),
                 })
                 .insert(PlayerController);
 
@@ -127,6 +141,7 @@ fn setup(
                 })
                 .insert(Paddle {
                     speed: paddle_speed,
+                    direction: Vec2::new(0., 0.),
                 })
                 .insert(AiController);
 
@@ -141,7 +156,7 @@ fn setup(
                     ..default()
                 })
                 .insert(Ball {
-                    velocity: 800.0 * Vec3::new(0.5, -0.5, 0.0).normalize(),
+                    velocity: Vec3::new(0.0, 0.0, 0.0),
                 });
         });
 
@@ -175,7 +190,7 @@ fn setup(
             .with_children(|parent| {
                 parent
                     .spawn_bundle(
-                        TextBundle::from_sections([TextSection::from_style(text_style.clone())])
+                        TextBundle::from_sections([TextSection::new("0", text_style.clone())])
                             .with_style(Style {
                                 position_type: PositionType::Absolute,
                                 position: UiRect {
@@ -189,7 +204,7 @@ fn setup(
                     .insert(PlayerController);
                 parent
                     .spawn_bundle(
-                        TextBundle::from_sections([TextSection::from_style(text_style.clone())])
+                        TextBundle::from_sections([TextSection::new("0", text_style.clone())])
                             .with_style(Style {
                                 align_content: AlignContent::FlexEnd,
                                 position_type: PositionType::Absolute,
@@ -229,14 +244,69 @@ fn adjust_scale(
     }
 }
 
-fn keyboard_input(
-    time: Res<Time>,
-    keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&Paddle, &mut Transform, &Sprite), With<PlayerController>>,
+fn player_serve(
     config: Res<Config>,
+    mut state: ResMut<State<PongStage>>,
+    keyboard_input: Res<Input<KeyCode>>,
+    mut query: Query<(&Paddle, &mut Transform), With<PlayerController>>,
+    mut ball_query: Query<(&mut Ball, &mut Transform), Without<PlayerController>>,
 ) {
-    let half_court_height = config.court_size[1] / 2.0;
-    for (paddle, mut paddle_transform, paddle_sprite) in query.iter_mut() {
+    for (_paddle, paddle_transform) in query.iter_mut() {
+        for (_ball, mut ball_transform) in &mut ball_query {
+            ball_transform.translation.x = -(config.court_size[0] / 2.
+                * config.players_distance_percentage
+                + config.court_size[0] / 2. * 0.2);
+            ball_transform.translation.y = paddle_transform.translation.y;
+        }
+    }
+    if keyboard_input.pressed(KeyCode::Space) {
+        state.set(PongStage::Playing).unwrap();
+        for (mut ball, _ball_transform) in &mut ball_query {
+            if keyboard_input.pressed(KeyCode::Up) {
+                ball.velocity = 800. * Vec3::new(1., 1., 0.).normalize();
+            } else if keyboard_input.pressed(KeyCode::Down) {
+                ball.velocity = 800. * Vec3::new(1., -1., 0.).normalize();
+            } else {
+                ball.velocity = 800. * Vec3::new(1., 0., 0.).normalize();
+            }
+        }
+    }
+}
+
+fn ai_serve(
+    config: Res<Config>,
+    mut state: ResMut<State<PongStage>>,
+    mut query: Query<(&mut Paddle, &Transform), With<AiController>>,
+    mut ball_query: Query<(&mut Ball, &mut Transform), Without<AiController>>,
+) {
+    for (mut paddle, _paddle_transform) in &mut query {
+        if rand::random() {
+            paddle.direction.y = 1.0;
+        } else {
+            paddle.direction.y = -1.0;
+        }
+    }
+    for (_paddle, paddle_transform) in query.iter_mut() {
+        for (_ball, mut ball_transform) in &mut ball_query {
+            ball_transform.translation.x = config.court_size[0] / 2.
+                * config.players_distance_percentage
+                + config.court_size[0] / 2. * 0.2;
+            ball_transform.translation.y = paddle_transform.translation.y;
+        }
+    }
+    if rand::random() {
+        state.set(PongStage::Playing).unwrap();
+        for (mut ball, _ball_transform) in &mut ball_query {
+            ball.velocity = 800. * Vec3::new(-1., 0., 0.).normalize();
+        }
+    }
+}
+
+fn keyboard_movement(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut query: Query<&mut Paddle, With<PlayerController>>,
+) {
+    for mut paddle in &mut query {
         let mut direction = 0.0;
         if keyboard_input.pressed(KeyCode::Up) {
             direction += 1.0;
@@ -245,32 +315,20 @@ fn keyboard_input(
             direction -= 1.0;
         }
 
-        let paddle_half_height = paddle_sprite
-            .custom_size
-            .expect("Sprite should have custom height")
-            .y
-            / 2.0;
-        let translation = &mut paddle_transform.translation;
-        translation.y += time.delta_seconds() * direction * paddle.speed;
-        translation.y = translation
-            .y
-            .min(half_court_height - paddle_half_height)
-            .max(-half_court_height + paddle_half_height)
+        paddle.direction.y = direction;
     }
 }
 
 fn ai_input(
-    time: Res<Time>,
-    mut paddle_query: Query<(&Paddle, &mut Transform, &Sprite), With<AiController>>,
+    mut paddle_query: Query<(&mut Paddle, &Transform), With<AiController>>,
     ball_query: Query<(&Ball, &Transform), Without<AiController>>,
     config: Res<Config>,
 ) {
-    let half_court_height = config.court_size[1] / 2.0;
     let court_width = config.court_size[0];
     let view_distance_px = court_width * config.ai_handicap.view_percentage;
-    for (paddle, mut paddle_transform, paddle_sprite) in paddle_query.iter_mut() {
+    for (mut paddle, paddle_transform) in paddle_query.iter_mut() {
         let mut direction = 0.0;
-        for (ball, ball_transform) in ball_query.iter() {
+        for (ball, ball_transform) in &ball_query {
             if ball.velocity.x < 0.0
                 || (ball_transform.translation.x - paddle_transform.translation.x).abs()
                     > view_distance_px
@@ -287,18 +345,35 @@ fn ai_input(
                 }
             }
 
-            let paddle_half_height = paddle_sprite
-                .custom_size
-                .expect("Sprite should have custom height")
-                .y
-                / 2.0;
-            let translation = &mut paddle_transform.translation;
-            translation.y += time.delta_seconds() * direction * paddle.speed;
-            translation.y = translation
-                .y
-                .min(half_court_height - paddle_half_height)
-                .max(-half_court_height + paddle_half_height)
+            paddle.direction.y = direction;
         }
+    }
+}
+
+fn paddle_movement_system(
+    time: Res<Time>,
+    mut paddle_query: Query<(&mut Paddle, &mut Transform, &Sprite)>,
+    config: Res<Config>,
+) {
+    // clamp the timestep to stop the ball from escaping when the game starts
+    let delta_seconds = f32::min(0.2, time.delta_seconds());
+    let half_court_height = config.court_size[1] / 2.0;
+
+    for (mut paddle, mut transform, sprite) in &mut paddle_query {
+        let paddle_half_height = sprite
+            .custom_size
+            .expect("Sprite should have custom height")
+            .y
+            / 2.0;
+
+        let translation = &mut transform.translation;
+        translation.y += delta_seconds * paddle.direction.y * paddle.speed;
+        translation.y = translation.y.clamp(
+            -half_court_height + paddle_half_height,
+            half_court_height - paddle_half_height,
+        );
+
+        paddle.direction = Vec2::new(0., 0.);
     }
 }
 
@@ -396,11 +471,12 @@ fn ball_collision_system(
 }
 
 fn ball_scoring_system(
-    mut ball_query: Query<(&Ball, &mut Transform, &Sprite), Without<Court>>,
+    mut state: ResMut<State<PongStage>>,
+    mut ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
     mut scoreboard: ResMut<Scoreboard>,
     court_collider_query: Query<(&Court, &Transform, &Sprite), Without<Ball>>,
 ) {
-    for (_ball, mut ball_transform, ball_sprite) in ball_query.iter_mut() {
+    for (_ball, ball_transform, ball_sprite) in ball_query.iter_mut() {
         let ball_size = ball_sprite
             .custom_size
             .expect("Collider should have custom size");
@@ -418,14 +494,12 @@ fn ball_scoring_system(
             if let Some(collision) = collision {
                 match collision {
                     Collision::Left => {
-                        ball_transform.translation.x = 0.0;
-                        ball_transform.translation.y = 0.0;
                         scoreboard.ai += 1;
+                        state.set(PongStage::Serve(Controller::Player)).unwrap();
                     }
                     Collision::Right => {
-                        ball_transform.translation.x = 0.0;
-                        ball_transform.translation.y = 0.0;
                         scoreboard.player += 1;
+                        state.set(PongStage::Serve(Controller::AI)).unwrap();
                     }
                     _ => (),
                 }
@@ -464,23 +538,37 @@ fn main() {
                 view_percentage: 0.5,
             },
         })
+        .add_state(PongStage::Serve(Controller::Player))
         .add_startup_system(setup)
+        .add_system(adjust_scale)
         .add_system_set(
-            SystemSet::new()
-                .label(GameloopStages::Input)
-                .with_system(keyboard_input)
-                .with_system(ai_input)
-                .with_system(adjust_scale),
+            SystemSet::on_update(PongStage::Serve(Controller::Player))
+                .with_system(player_serve)
+                .with_system(keyboard_movement)
+                .with_system(paddle_movement_system),
         )
         .add_system_set(
-            SystemSet::new()
+            SystemSet::on_update(PongStage::Serve(Controller::AI))
+                .with_system(ai_serve)
+                .with_system(keyboard_movement)
+                .with_system(paddle_movement_system),
+        )
+        .add_system_set(
+            SystemSet::on_update(PongStage::Playing)
+                .label(GameloopStages::Input)
+                .with_system(keyboard_movement)
+                .with_system(ai_input)
+                .with_system(paddle_movement_system),
+        )
+        .add_system_set(
+            SystemSet::on_update(PongStage::Playing)
                 .label(GameloopStages::Physics)
                 .after(GameloopStages::Input)
                 .with_system(ball_movement_system)
                 .with_system(ball_collision_system),
         )
         .add_system_set(
-            SystemSet::new()
+            SystemSet::on_update(PongStage::Playing)
                 .label(GameloopStages::Scoring)
                 .after(GameloopStages::Physics)
                 .with_system(ball_scoring_system)
