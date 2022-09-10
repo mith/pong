@@ -4,10 +4,32 @@ use bevy::{
 };
 
 #[derive(Component)]
+struct Court;
+
+#[derive(Component)]
 struct PlayerController;
 
 #[derive(Component)]
 struct AiController;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum Controller {
+    Player,
+    AI,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum PongStage {
+    Serve(Controller),
+    Playing,
+}
+
+#[derive(SystemLabel)]
+enum GameloopStage {
+    Input,
+    Scoring,
+    Physics,
+}
 
 #[derive(Debug, Component)]
 struct Paddle {
@@ -36,28 +58,6 @@ struct Scoreboard {
     player: usize,
     ai: usize,
 }
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum Controller {
-    Player,
-    AI,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum PongStage {
-    Serve(Controller),
-    Playing,
-}
-
-#[derive(SystemLabel)]
-enum GameloopStages {
-    Input,
-    Scoring,
-    Physics,
-}
-
-#[derive(Component)]
-struct Court;
 
 fn setup(
     mut commands: Commands,
@@ -557,22 +557,22 @@ fn main() {
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
-                .label(GameloopStages::Input)
+                .label(GameloopStage::Input)
                 .with_system(keyboard_movement)
                 .with_system(ai_input)
                 .with_system(paddle_movement_system),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
-                .label(GameloopStages::Physics)
-                .after(GameloopStages::Input)
+                .label(GameloopStage::Physics)
+                .after(GameloopStage::Input)
                 .with_system(ball_movement_system)
                 .with_system(ball_collision_system),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
-                .label(GameloopStages::Scoring)
-                .after(GameloopStages::Physics)
+                .label(GameloopStage::Scoring)
+                .after(GameloopStage::Physics)
                 .with_system(ball_scoring_system)
                 .with_system(scoreboardsystem.after(ball_scoring_system)),
         )
