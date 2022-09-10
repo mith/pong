@@ -252,24 +252,22 @@ fn player_serve(
     mut query: Query<(&Paddle, &mut Transform), With<PlayerController>>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<PlayerController>>,
 ) {
-    for (_paddle, paddle_transform) in query.iter_mut() {
-        for (_ball, mut ball_transform) in &mut ball_query {
-            ball_transform.translation.x = -(config.court_size[0] / 2.
-                * config.players_distance_percentage
-                + config.court_size[0] / 2. * 0.2);
-            ball_transform.translation.y = paddle_transform.translation.y;
-        }
-    }
+    let (_paddle, paddle_transform) = query.single_mut();
+    let (mut ball, mut ball_transform) = ball_query.single_mut();
+
+    ball_transform.translation.x = -(config.court_size[0] / 2.
+        * config.players_distance_percentage
+        + config.court_size[0] / 2. * 0.2);
+    ball_transform.translation.y = paddle_transform.translation.y;
+
     if keyboard_input.pressed(KeyCode::Space) {
         state.set(PongStage::Playing).unwrap();
-        for (mut ball, _ball_transform) in &mut ball_query {
-            if keyboard_input.pressed(KeyCode::Up) {
-                ball.velocity = config.ball_speed * Vec3::new(1., 1., 0.).normalize();
-            } else if keyboard_input.pressed(KeyCode::Down) {
-                ball.velocity = config.ball_speed * Vec3::new(1., -1., 0.).normalize();
-            } else {
-                ball.velocity = config.ball_speed * Vec3::new(1., 0., 0.).normalize();
-            }
+        if keyboard_input.pressed(KeyCode::Up) {
+            ball.velocity = config.ball_speed * Vec3::new(1., 1., 0.).normalize();
+        } else if keyboard_input.pressed(KeyCode::Down) {
+            ball.velocity = config.ball_speed * Vec3::new(1., -1., 0.).normalize();
+        } else {
+            ball.velocity = config.ball_speed * Vec3::new(1., 0., 0.).normalize();
         }
     }
 }
@@ -280,26 +278,19 @@ fn ai_serve(
     mut query: Query<(&mut Paddle, &Transform), With<AiController>>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<AiController>>,
 ) {
-    for (mut paddle, _paddle_transform) in &mut query {
-        if rand::random() {
-            paddle.direction.y = 1.0;
-        } else {
-            paddle.direction.y = -1.0;
-        }
+    let (mut paddle, paddle_transform) = query.single_mut();
+    if rand::random() {
+        paddle.direction.y = 1.0;
+    } else {
+        paddle.direction.y = -1.0;
     }
-    for (_paddle, paddle_transform) in query.iter_mut() {
-        for (_ball, mut ball_transform) in &mut ball_query {
-            ball_transform.translation.x = config.court_size[0] / 2.
-                * config.players_distance_percentage
-                + config.court_size[0] / 2. * 0.2;
-            ball_transform.translation.y = paddle_transform.translation.y;
-        }
-    }
+    let (mut ball, mut ball_transform) = ball_query.single_mut();
+    ball_transform.translation.x = config.court_size[0] / 2. * config.players_distance_percentage
+        + config.court_size[0] / 2. * 0.2;
+    ball_transform.translation.y = paddle_transform.translation.y;
     if rand::random() {
         state.set(PongStage::Playing).unwrap();
-        for (mut ball, _ball_transform) in &mut ball_query {
-            ball.velocity = config.ball_speed * Vec3::new(-1., 0., 0.).normalize();
-        }
+        ball.velocity = config.ball_speed * Vec3::new(-1., 0., 0.).normalize();
     }
 }
 
@@ -307,17 +298,16 @@ fn keyboard_movement_input(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Paddle, With<PlayerController>>,
 ) {
-    for mut paddle in &mut query {
-        let mut direction = 0.0;
-        if keyboard_input.pressed(KeyCode::Up) {
-            direction += 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::Down) {
-            direction -= 1.0;
-        }
-
-        paddle.direction.y = direction;
+    let mut paddle = query.single_mut();
+    let mut direction = 0.0;
+    if keyboard_input.pressed(KeyCode::Up) {
+        direction += 1.0;
     }
+    if keyboard_input.pressed(KeyCode::Down) {
+        direction -= 1.0;
+    }
+
+    paddle.direction.y = direction;
 }
 
 fn ai_movement_input(
@@ -327,28 +317,25 @@ fn ai_movement_input(
 ) {
     let court_width = config.court_size[0];
     let view_distance_px = court_width * config.ai_handicap.view_percentage;
-    for (mut paddle, paddle_transform) in paddle_query.iter_mut() {
-        let mut direction = 0.0;
-        for (ball, ball_transform) in &ball_query {
-            if ball.velocity.x < 0.0
-                || (ball_transform.translation.x - paddle_transform.translation.x).abs()
-                    > view_distance_px
-            {
-                continue;
-            }
+    let (mut paddle, paddle_transform) = paddle_query.single_mut();
+    let mut direction = 0.0;
+    let (ball, ball_transform) = ball_query.single();
+    if ball.velocity.x < 0.0
+        || (ball_transform.translation.x - paddle_transform.translation.x).abs() > view_distance_px
+    {
+        return;
+    }
 
-            if (ball_transform.translation.y - paddle_transform.translation.y).abs() > 10.0 {
-                if ball_transform.translation.y > paddle_transform.translation.y {
-                    direction += 1.0;
-                }
-                if ball_transform.translation.y < paddle_transform.translation.y {
-                    direction -= 1.0;
-                }
-            }
-
-            paddle.direction.y = direction;
+    if (ball_transform.translation.y - paddle_transform.translation.y).abs() > 10.0 {
+        if ball_transform.translation.y > paddle_transform.translation.y {
+            direction += 1.0;
+        }
+        if ball_transform.translation.y < paddle_transform.translation.y {
+            direction -= 1.0;
         }
     }
+
+    paddle.direction.y = direction;
 }
 
 fn paddle_movement(
@@ -382,9 +369,8 @@ fn ball_movement(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>
     // clamp the timestep to stop the ball from escaping when the game starts
     let delta_seconds = f32::min(0.2, time.delta_seconds());
 
-    for (ball, mut transform) in ball_query.iter_mut() {
-        transform.translation += ball.velocity * delta_seconds;
-    }
+    let (ball, mut transform) = ball_query.single_mut();
+    transform.translation += ball.velocity * delta_seconds;
 }
 
 fn ball_collision(
@@ -392,80 +378,78 @@ fn ball_collision(
     court_collider_query: Query<(&Court, &Transform, &Sprite)>,
     paddle_collider_query: Query<(&Paddle, &Transform, &Sprite)>,
 ) {
-    for (mut ball, mut ball_transform, sprite) in ball_query.iter_mut() {
-        let ball_size = sprite.custom_size.expect("Ball should have custom size");
-        let velocity = &mut ball.velocity;
+    let (mut ball, mut ball_transform, sprite) = ball_query.single_mut();
+    let ball_size = sprite.custom_size.expect("Ball should have custom size");
+    let velocity = &mut ball.velocity;
 
-        // check collision with court top and bottom
-        for (_court, court_transform, court_sprite) in court_collider_query.iter() {
-            let other_size = court_sprite
-                .custom_size
-                .expect("Collider should have custom size");
+    // check collision with court top and bottom
+    let (_court, court_transform, court_sprite) = court_collider_query.single();
+    let other_size = court_sprite
+        .custom_size
+        .expect("Collider should have custom size");
 
-            // Sometimes the ball clips through a wall, here we clamp the position to within the
-            // court bounds
-            let half_size = other_size / 2.0;
-            ball_transform.translation.x = ball_transform
-                .translation
-                .x
-                .clamp(-half_size.x, half_size.x);
-            ball_transform.translation.y = ball_transform
-                .translation
-                .y
-                .clamp(-half_size.y, half_size.y);
+    // Sometimes the ball clips through a wall, here we clamp the position to within the
+    // court bounds
+    let half_size = other_size / 2.0;
+    ball_transform.translation.x = ball_transform
+        .translation
+        .x
+        .clamp(-half_size.x, half_size.x);
+    ball_transform.translation.y = ball_transform
+        .translation
+        .y
+        .clamp(-half_size.y, half_size.y);
 
-            let collision = collide(
-                ball_transform.translation,
-                ball_size,
-                court_transform.translation,
-                other_size,
-            );
+    let collision = collide(
+        ball_transform.translation,
+        ball_size,
+        court_transform.translation,
+        other_size,
+    );
 
-            if let Some(collision) = collision {
-                match collision {
-                    Collision::Top => velocity.y = -velocity.y.abs(),
-                    Collision::Bottom => velocity.y = velocity.y.abs(),
-                    _ => (),
-                }
-            }
+    if let Some(collision) = collision {
+        match collision {
+            Collision::Top => velocity.y = -velocity.y.abs(),
+            Collision::Bottom => velocity.y = velocity.y.abs(),
+            _ => (),
         }
+    }
 
-        for (_paddle, paddle_transform, paddle_sprite) in &paddle_collider_query {
-            let paddle_size = paddle_sprite
-                .custom_size
-                .expect("Paddle should have custom size");
-            let collision = collide(
-                ball_transform.translation,
-                ball_size,
-                paddle_transform.translation,
-                paddle_size,
-            );
-            if let Some(collision) = collision {
-                match collision {
-                    Collision::Left | Collision::Right => {
-                        let angle = ball_transform
-                            .translation
-                            .angle_between(paddle_transform.translation);
-                        let mut force = angle * 3000.0;
-                        if paddle_transform.translation.y > ball_transform.translation.y {
-                            force = -force;
-                        }
-                        match collision {
-                            Collision::Left => {
-                                velocity.x = -velocity.x.abs();
-                                velocity.y = force;
-                            }
-                            Collision::Right => {
-                                velocity.x = velocity.x.abs();
-                                velocity.y = force;
-                            }
-                            _ => (),
-                        };
+    for (_paddle, paddle_transform, paddle_sprite) in &paddle_collider_query {
+        let paddle_size = paddle_sprite
+            .custom_size
+            .expect("Paddle should have custom size");
+        let collision = collide(
+            ball_transform.translation,
+            ball_size,
+            paddle_transform.translation,
+            paddle_size,
+        );
+        if let Some(collision) = collision {
+            match collision {
+                Collision::Left | Collision::Right => {
+                    let angle = ball_transform
+                        .translation
+                        .angle_between(paddle_transform.translation);
+                    let mut force = angle * 3000.0;
+                    if paddle_transform.translation.y > ball_transform.translation.y {
+                        force = -force;
                     }
-                    Collision::Top => velocity.y = velocity.y.abs(),
-                    Collision::Bottom => velocity.y = -velocity.y.abs(),
-                    _ => (),
+                    match collision {
+                        Collision::Left => {
+                            velocity.x = -velocity.x.abs();
+                            velocity.y = force;
+                        }
+                        Collision::Right => {
+                            velocity.x = velocity.x.abs();
+                            velocity.y = force;
+                        }
+                        _ => (),
+                    };
                 }
+                Collision::Top => velocity.y = velocity.y.abs(),
+                Collision::Bottom => velocity.y = -velocity.y.abs(),
+                _ => (),
             }
         }
     }
@@ -473,38 +457,36 @@ fn ball_collision(
 
 fn ball_scoring(
     mut state: ResMut<State<PongStage>>,
-    mut ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
+    ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
     mut scoreboard: ResMut<Scoreboard>,
     court_collider_query: Query<(&Court, &Transform, &Sprite), Without<Ball>>,
 ) {
-    for (_ball, ball_transform, ball_sprite) in ball_query.iter_mut() {
-        let ball_size = ball_sprite
-            .custom_size
-            .expect("Collider should have custom size");
-        for (_court, court_transform, court_sprite) in &court_collider_query {
-            let court_size = court_sprite
-                .custom_size
-                .expect("Court should have custom size");
-            let collision = collide(
-                ball_transform.translation,
-                ball_size,
-                court_transform.translation,
-                court_size,
-            );
+    let (_ball, ball_transform, ball_sprite) = ball_query.single();
+    let ball_size = ball_sprite
+        .custom_size
+        .expect("Collider should have custom size");
+    let (_court, court_transform, court_sprite) = &court_collider_query.single();
+    let court_size = court_sprite
+        .custom_size
+        .expect("Court should have custom size");
+    let collision = collide(
+        ball_transform.translation,
+        ball_size,
+        court_transform.translation,
+        court_size,
+    );
 
-            if let Some(collision) = collision {
-                match collision {
-                    Collision::Left => {
-                        scoreboard.ai += 1;
-                        state.set(PongStage::Serve(Controller::Player)).unwrap();
-                    }
-                    Collision::Right => {
-                        scoreboard.player += 1;
-                        state.set(PongStage::Serve(Controller::AI)).unwrap();
-                    }
-                    _ => (),
-                }
+    if let Some(collision) = collision {
+        match collision {
+            Collision::Left => {
+                scoreboard.ai += 1;
+                state.set(PongStage::Serve(Controller::Player)).unwrap();
             }
+            Collision::Right => {
+                scoreboard.player += 1;
+                state.set(PongStage::Serve(Controller::AI)).unwrap();
+            }
+            _ => (),
         }
     }
 }
@@ -514,12 +496,11 @@ fn scoreboard(
     mut player_scoreboard: Query<&mut Text, (With<PlayerController>, Without<AiController>)>,
     mut ai_scoreboard: Query<&mut Text, (With<AiController>, Without<PlayerController>)>,
 ) {
-    for mut text in player_scoreboard.iter_mut() {
-        text.sections[0].value = format!("{}", scoreboard.player);
-    }
-    for mut text in ai_scoreboard.iter_mut() {
-        text.sections[0].value = format!("{}", scoreboard.ai);
-    }
+    let mut text = player_scoreboard.single_mut();
+    text.sections[0].value = format!("{}", scoreboard.player);
+
+    let mut text = ai_scoreboard.single_mut();
+    text.sections[0].value = format!("{}", scoreboard.ai);
 }
 
 fn main() {
@@ -533,9 +514,9 @@ fn main() {
         .insert_resource(Scoreboard { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.,
-            ball_speed: 800.,
+            ball_speed: 1000.,
             court_size: [1600., 1000.],
-            players_distance_percentage: 0.3,
+            players_distance_percentage: 0.4,
             ai_handicap: AiHandicap {
                 view_percentage: 0.5,
             },
