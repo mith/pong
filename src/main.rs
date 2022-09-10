@@ -381,14 +381,12 @@ fn ball_collision(
     let (mut ball, mut ball_transform, sprite) = ball_query.single_mut();
     let ball_size = sprite.custom_size.expect("Ball should have custom size");
     let velocity = &mut ball.velocity;
-
-    // check collision with court top and bottom
     let (_court, court_transform, court_sprite) = court_collider_query.single();
     let other_size = court_sprite
         .custom_size
         .expect("Collider should have custom size");
 
-    // Sometimes the ball clips through a wall, here we clamp the position to within the
+    // Sometimes the ball clips through a wall, so we clamp the position to within the
     // court bounds
     let half_size = other_size / 2.0;
     ball_transform.translation.x = ball_transform
@@ -400,6 +398,7 @@ fn ball_collision(
         .y
         .clamp(-half_size.y, half_size.y);
 
+    // check collision with court top and bottom
     let collision = collide(
         ball_transform.translation,
         ball_size,
@@ -415,6 +414,7 @@ fn ball_collision(
         }
     }
 
+    // check collision with both paddles
     for (_paddle, paddle_transform, paddle_sprite) in &paddle_collider_query {
         let paddle_size = paddle_sprite
             .custom_size
