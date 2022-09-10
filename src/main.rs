@@ -303,7 +303,7 @@ fn ai_serve(
     }
 }
 
-fn keyboard_movement(
+fn keyboard_movement_input(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Paddle, With<PlayerController>>,
 ) {
@@ -320,7 +320,7 @@ fn keyboard_movement(
     }
 }
 
-fn ai_input(
+fn ai_movement_input(
     mut paddle_query: Query<(&mut Paddle, &Transform), With<AiController>>,
     ball_query: Query<(&Ball, &Transform), Without<AiController>>,
     config: Res<Config>,
@@ -351,7 +351,7 @@ fn ai_input(
     }
 }
 
-fn paddle_movement_system(
+fn paddle_movement(
     time: Res<Time>,
     mut paddle_query: Query<(&mut Paddle, &mut Transform, &Sprite)>,
     config: Res<Config>,
@@ -378,7 +378,7 @@ fn paddle_movement_system(
     }
 }
 
-fn ball_movement_system(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>) {
+fn ball_movement(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>) {
     // clamp the timestep to stop the ball from escaping when the game starts
     let delta_seconds = f32::min(0.2, time.delta_seconds());
 
@@ -387,7 +387,7 @@ fn ball_movement_system(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Tran
     }
 }
 
-fn ball_collision_system(
+fn ball_collision(
     mut ball_query: Query<(&mut Ball, &mut Transform, &Sprite), (Without<Court>, Without<Paddle>)>,
     court_collider_query: Query<(&Court, &Transform, &Sprite)>,
     paddle_collider_query: Query<(&Paddle, &Transform, &Sprite)>,
@@ -471,7 +471,7 @@ fn ball_collision_system(
     }
 }
 
-fn ball_scoring_system(
+fn ball_scoring(
     mut state: ResMut<State<PongStage>>,
     mut ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
     mut scoreboard: ResMut<Scoreboard>,
@@ -509,7 +509,7 @@ fn ball_scoring_system(
     }
 }
 
-fn scoreboardsystem(
+fn scoreboard(
     scoreboard: ResMut<Scoreboard>,
     mut player_scoreboard: Query<&mut Text, (With<PlayerController>, Without<AiController>)>,
     mut ai_scoreboard: Query<&mut Text, (With<AiController>, Without<PlayerController>)>,
@@ -545,36 +545,36 @@ fn main() {
         .add_system(adjust_scale)
         .add_system_set(
             SystemSet::on_update(PongStage::Serve(Controller::Player))
-                .with_system(player_serve)
-                .with_system(keyboard_movement)
-                .with_system(paddle_movement_system),
+                .with_system(player_serve.before(paddle_movement))
+                .with_system(keyboard_movement_input.before(paddle_movement))
+                .with_system(paddle_movement),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Serve(Controller::AI))
-                .with_system(ai_serve)
-                .with_system(keyboard_movement)
-                .with_system(paddle_movement_system),
+                .with_system(ai_serve.before(paddle_movement))
+                .with_system(keyboard_movement_input.before(paddle_movement))
+                .with_system(paddle_movement),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
                 .label(GameloopStage::Input)
-                .with_system(keyboard_movement)
-                .with_system(ai_input)
-                .with_system(paddle_movement_system),
+                .with_system(keyboard_movement_input)
+                .with_system(ai_movement_input),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
                 .label(GameloopStage::Physics)
                 .after(GameloopStage::Input)
-                .with_system(ball_movement_system)
-                .with_system(ball_collision_system),
+                .with_system(ball_movement.before(ball_collision))
+                .with_system(paddle_movement.before(ball_collision))
+                .with_system(ball_collision),
         )
         .add_system_set(
             SystemSet::on_update(PongStage::Playing)
                 .label(GameloopStage::Scoring)
                 .after(GameloopStage::Physics)
-                .with_system(ball_scoring_system)
-                .with_system(scoreboardsystem.after(ball_scoring_system)),
+                .with_system(ball_scoring)
+                .with_system(scoreboard.after(ball_scoring)),
         )
         .run();
 }
