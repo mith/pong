@@ -20,6 +20,10 @@
       canvas {
         grid-area: 1 / 1 / 1 / 1;
       }
+      #loading-screen {
+        grid-area: 1 / 1 / 1 / 1;
+        height: 100%;
+      }
       #focus-message {
         color: white;
         background-color: black;
@@ -40,6 +44,7 @@
     </style>
   </head>
   <body>
+    <img id="loading-screen" src="assets/loading-screen.png" />
     <script type="module">
       console.log('Running focus message setup.');
 
