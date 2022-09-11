@@ -8,7 +8,7 @@ edition = "2021"
 
 [profile.release]
 lto = true
-opt-level = "s"
+opt-level = "z"
 
 [dependencies]
 rand = { version = "0.8.5", features = ["alloc"] }
