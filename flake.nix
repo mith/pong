@@ -99,21 +99,23 @@
             doCheck = false;
           };
 
-        packages.pong-web =
-          pkgs.stdenv.mkDerivation {
-            name = "pong-web";
-            src = ./.;
-            nativeBuildInputs = [
-              pkgs.wasm-bindgen-cli
-            ];
-            phases = ["unpackPhase" "installPhase"];
-            installPhase = ''
-              mkdir -p $out
-              wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
-              cp web/* $out/
-              cp -r assets $out/assets
-            '';
-          };
+        packages.pong-web = pkgs.stdenv.mkDerivation {
+          name = "pong-web";
+          src = ./.;
+          nativeBuildInputs = [
+            pkgs.wasm-bindgen-cli
+            pkgs.binaryen
+          ];
+          phases = ["unpackPhase" "installPhase"];
+          installPhase = ''
+            mkdir -p $out
+            wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
+            mv $out/pong_bg.wasm .
+            wasm-opt -Os -o $out/pong_bg.wasm pong_bg.wasm
+            cp web/* $out/
+            cp -r assets $out/assets
+          '';
+        };
 
         packages.pong-server = pkgs.writeShellScriptBin "run-pong-server" ''
           ${pkgs.python3}/bin/python -m http.server --directory ${self.packages.${system}.pong-web}
