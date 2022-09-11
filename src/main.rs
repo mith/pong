@@ -172,53 +172,42 @@ fn setup(
         .spawn_bundle(NodeBundle {
             style: Style {
                 size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                align_items: AlignItems::Center,
+                align_items: AlignItems::FlexEnd,
                 justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Row,
                 ..default()
             },
             color: UiColor(Color::NONE),
             ..default()
         })
-        .with_children(|root| {
-            root.spawn_bundle(NodeBundle {
-                style: Style {
-                    size: Size::new(Val::Percent(50.0), Val::Percent(100.0)),
-                    ..default()
-                },
-                color: UiColor(Color::NONE),
-                ..default()
-            })
-            .with_children(|parent| {
-                parent
-                    .spawn_bundle(
-                        TextBundle::from_sections([TextSection::new("0", text_style.clone())])
-                            .with_style(Style {
-                                position_type: PositionType::Absolute,
-                                position: UiRect {
-                                    top: Val::Px(16.0),
-                                    left: Val::Px(4.0),
-                                    ..default()
-                                },
+        .with_children(|parent| {
+            parent
+                .spawn_bundle(
+                    TextBundle::from_sections([TextSection::new("0", text_style.clone())])
+                        .with_style(Style {
+                            // position_type: PositionType::Absolute,
+                            align_content: AlignContent::FlexStart,
+                            margin: UiRect {
+                                right: Val::Percent(10.),
                                 ..default()
-                            }),
-                    )
-                    .insert(PlayerController);
-                parent
-                    .spawn_bundle(
-                        TextBundle::from_sections([TextSection::new("0", text_style.clone())])
-                            .with_style(Style {
-                                align_content: AlignContent::FlexEnd,
-                                position_type: PositionType::Absolute,
-                                position: UiRect {
-                                    top: Val::Px(16.0),
-                                    right: Val::Px(4.0),
-                                    ..default()
-                                },
+                            },
+                            ..default()
+                        }),
+                )
+                .insert(PlayerController);
+            parent
+                .spawn_bundle(
+                    TextBundle::from_sections([TextSection::new("0", text_style.clone())])
+                        .with_style(Style {
+                            align_content: AlignContent::FlexStart,
+                            margin: UiRect {
+                                left: Val::Percent(10.),
                                 ..default()
-                            }),
-                    )
-                    .insert(AiController);
-            });
+                            },
+                            ..default()
+                        }),
+                )
+                .insert(AiController);
         });
 }
 
