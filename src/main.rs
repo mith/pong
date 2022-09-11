@@ -506,7 +506,7 @@ fn scoreboard(
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
-            canvas: Some("canvas".into()),
+            fit_canvas_to_parent: true,
             ..default()
         })
         .add_plugins(DefaultPlugins)
