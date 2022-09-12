@@ -417,21 +417,22 @@ fn ball_collision(
         if let Some(collision) = collision {
             match collision {
                 Collision::Left | Collision::Right => {
-                    let angle = ball_transform
-                        .translation
-                        .angle_between(paddle_transform.translation);
-                    let mut force = angle * 3000.0;
-                    if paddle_transform.translation.y > ball_transform.translation.y {
-                        force = -force;
+                    let paddle_ball_distance =
+                        paddle_transform.translation.y - ball_transform.translation.y;
+                    if paddle_ball_distance > (0.25 * paddle_size.y) {
+                        *velocity = Vec3::new(1., -1., 0.).normalize() * velocity.length();
+                    } else if paddle_ball_distance < -(0.25 * paddle_size.y) {
+                        *velocity = Vec3::new(1., 1., 0.).normalize() * velocity.length();
+                    } else {
+                        *velocity = Vec3::new(1., 0., 0.).normalize() * velocity.length();
                     }
+                    dbg!(paddle_ball_distance, 0.2 * paddle_size.y);
                     match collision {
                         Collision::Left => {
                             velocity.x = -velocity.x.abs();
-                            velocity.y = force;
                         }
                         Collision::Right => {
                             velocity.x = velocity.x.abs();
-                            velocity.y = force;
                         }
                         _ => (),
                     };
