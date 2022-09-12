@@ -300,13 +300,16 @@ fn keyboard_movement_input(
 }
 
 fn ai_movement_input(
-    mut paddle_query: Query<(&mut Paddle, &Transform), With<AiController>>,
+    mut paddle_query: Query<(&mut Paddle, &Transform, &Sprite), With<AiController>>,
     ball_query: Query<(&Ball, &Transform), Without<AiController>>,
     config: Res<Config>,
 ) {
     let court_width = config.court_size[0];
+    let (mut paddle, paddle_transform, paddle_sprite) = paddle_query.single_mut();
+    let paddle_size = paddle_sprite
+        .custom_size
+        .expect("Paddle should have custom size");
     let view_distance_px = court_width * config.ai_handicap.view_percentage;
-    let (mut paddle, paddle_transform) = paddle_query.single_mut();
     let mut direction = 0.0;
     let (ball, ball_transform) = ball_query.single();
     if ball.velocity.x < 0.0
@@ -315,7 +318,7 @@ fn ai_movement_input(
         return;
     }
 
-    if (ball_transform.translation.y - paddle_transform.translation.y).abs() > 10.0 {
+    if (ball_transform.translation.y - paddle_transform.translation.y).abs() > paddle_size.y / 2. {
         if ball_transform.translation.y > paddle_transform.translation.y {
             direction += 1.0;
         }
@@ -426,7 +429,6 @@ fn ball_collision(
                     } else {
                         *velocity = Vec3::new(1., 0., 0.).normalize() * velocity.length();
                     }
-                    dbg!(paddle_ball_distance, 0.2 * paddle_size.y);
                     match collision {
                         Collision::Left => {
                             velocity.x = -velocity.x.abs();
