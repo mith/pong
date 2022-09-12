@@ -18,9 +18,39 @@ enum Controller {
     AI,
 }
 
+trait CourtSide {}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum PongStage {
-    Serve(Controller),
+enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Component)]
+struct LeftPlayer;
+
+impl CourtSide for LeftPlayer {}
+
+#[derive(Component)]
+struct RightPlayer;
+
+impl CourtSide for RightPlayer {}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum GameType {
+    PlayerVsAi,
+    PlayerVsPlayer,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum GameState {
+    MainMenu,
+    Ingame,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum PongState {
+    Serve(Side),
     Playing,
 }
 
@@ -128,7 +158,8 @@ fn setup(
                     speed: paddle_speed,
                     direction: Vec2::new(0., 0.),
                 })
-                .insert(PlayerController);
+                .insert(PlayerController)
+                .insert(LeftPlayer);
 
             parent
                 .spawn_bundle(SpriteBundle {
@@ -144,7 +175,8 @@ fn setup(
                     speed: paddle_speed,
                     direction: Vec2::new(0., 0.),
                 })
-                .insert(AiController);
+                .insert(AiController)
+                .insert(RightPlayer);
 
             parent
                 .spawn_bundle(SpriteBundle {
@@ -234,13 +266,17 @@ fn adjust_scale(
     }
 }
 
-fn player_serve(
+fn player_serve<T: CourtSide + Component>(
     config: Res<Config>,
-    mut state: ResMut<State<PongStage>>,
+    mut state: ResMut<State<PongState>>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&Paddle, &mut Transform), With<PlayerController>>,
+    mut query: Query<(&Paddle, &mut Transform), (With<T>, With<PlayerController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<PlayerController>>,
 ) {
+    if query.is_empty() {
+        return;
+    }
+
     let (_paddle, paddle_transform) = query.single_mut();
     let (mut ball, mut ball_transform) = ball_query.single_mut();
 
@@ -250,7 +286,7 @@ fn player_serve(
     ball_transform.translation.y = paddle_transform.translation.y;
 
     if keyboard_input.pressed(KeyCode::Space) {
-        state.set(PongStage::Playing).unwrap();
+        state.set(PongState::Playing).unwrap();
         if keyboard_input.pressed(KeyCode::Up) {
             ball.velocity = config.ball_speed * Vec3::new(1., 1., 0.).normalize();
         } else if keyboard_input.pressed(KeyCode::Down) {
@@ -261,13 +297,17 @@ fn player_serve(
     }
 }
 
-fn ai_serve(
+fn ai_serve<T: CourtSide + Component>(
     config: Res<Config>,
-    mut state: ResMut<State<PongStage>>,
-    mut query: Query<(&mut Paddle, &Transform), With<AiController>>,
+    mut state: ResMut<State<PongState>>,
+    mut paddle_query: Query<(&mut Paddle, &Transform), (With<T>, With<AiController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<AiController>>,
 ) {
-    let (mut paddle, paddle_transform) = query.single_mut();
+    if paddle_query.is_empty() {
+        return;
+    }
+
+    let (mut paddle, paddle_transform) = paddle_query.single_mut();
     if rand::random() {
         paddle.direction.y = 1.0;
     } else {
@@ -278,7 +318,7 @@ fn ai_serve(
         + config.court_size[0] / 2. * 0.2;
     ball_transform.translation.y = paddle_transform.translation.y;
     if rand::random() {
-        state.set(PongStage::Playing).unwrap();
+        state.set(PongState::Playing).unwrap();
         ball.velocity = config.ball_speed * Vec3::new(-1., 0., 0.).normalize();
     }
 }
@@ -448,7 +488,7 @@ fn ball_collision(
 }
 
 fn ball_scoring(
-    mut state: ResMut<State<PongStage>>,
+    mut state: ResMut<State<PongState>>,
     ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
     mut scoreboard: ResMut<Scoreboard>,
     court_collider_query: Query<(&Court, &Transform, &Sprite), Without<Ball>>,
@@ -472,11 +512,11 @@ fn ball_scoring(
         match collision {
             Collision::Left => {
                 scoreboard.ai += 1;
-                state.set(PongStage::Serve(Controller::Player)).unwrap();
+                state.set(PongState::Serve(Side::Left)).unwrap();
             }
             Collision::Right => {
                 scoreboard.player += 1;
-                state.set(PongStage::Serve(Controller::AI)).unwrap();
+                state.set(PongState::Serve(Side::Right)).unwrap();
             }
             _ => (),
         }
@@ -513,29 +553,31 @@ fn main() {
                 view_percentage: 0.5,
             },
         })
-        .add_state(PongStage::Serve(Controller::Player))
+        .add_state(PongState::Serve(Side::Left))
         .add_startup_system(setup)
         .add_system(adjust_scale)
         .add_system_set(
-            SystemSet::on_update(PongStage::Serve(Controller::Player))
-                .with_system(player_serve.before(paddle_movement))
+            SystemSet::on_update(PongState::Serve(Side::Left))
+                .with_system(player_serve::<LeftPlayer>.before(paddle_movement))
+                .with_system(ai_serve::<LeftPlayer>.before(paddle_movement))
                 .with_system(keyboard_movement_input.before(paddle_movement))
                 .with_system(paddle_movement),
         )
         .add_system_set(
-            SystemSet::on_update(PongStage::Serve(Controller::AI))
-                .with_system(ai_serve.before(paddle_movement))
+            SystemSet::on_update(PongState::Serve(Side::Right))
+                .with_system(player_serve::<RightPlayer>.before(paddle_movement))
+                .with_system(ai_serve::<RightPlayer>.before(paddle_movement))
                 .with_system(keyboard_movement_input.before(paddle_movement))
                 .with_system(paddle_movement),
         )
         .add_system_set(
-            SystemSet::on_update(PongStage::Playing)
+            SystemSet::on_update(PongState::Playing)
                 .label(GameloopStage::Input)
                 .with_system(keyboard_movement_input)
                 .with_system(ai_movement_input),
         )
         .add_system_set(
-            SystemSet::on_update(PongStage::Playing)
+            SystemSet::on_update(PongState::Playing)
                 .label(GameloopStage::Physics)
                 .after(GameloopStage::Input)
                 .with_system(ball_movement.before(ball_collision))
@@ -543,7 +585,7 @@ fn main() {
                 .with_system(ball_collision),
         )
         .add_system_set(
-            SystemSet::on_update(PongStage::Playing)
+            SystemSet::on_update(PongState::Playing)
                 .label(GameloopStage::Scoring)
                 .after(GameloopStage::Physics)
                 .with_system(ball_scoring)
