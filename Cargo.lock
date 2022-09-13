@@ -1390,6 +1390,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "iyes_loopless"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fec251a82c60be9e282aec12056fa153666d5730b21d124655d7c22114d342c8"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_time",
+ "bevy_utils",
+]
+
+[[package]]
 name = "jni-sys"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1802,6 +1814,7 @@ name = "pong"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "iyes_loopless",
  "rand",
 ]
 

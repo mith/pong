@@ -12,6 +12,7 @@ opt-level = "z"
 
 [dependencies]
 rand = { version = "0.8.5", features = ["alloc"] }
+iyes_loopless = "0.7.1"
 
 [dependencies.bevy]
 version = "0.8"

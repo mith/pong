@@ -2,6 +2,7 @@ use bevy::{
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
 };
+use iyes_loopless::prelude::*;
 
 #[derive(Component)]
 struct Court;
@@ -36,7 +37,13 @@ struct RightPlayer;
 
 impl CourtSide for RightPlayer {}
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Component)]
+struct MainMenu;
+
+#[derive(Component)]
+struct Scoreboard;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Component)]
 enum GameType {
     PlayerVsAi,
     PlayerVsPlayer,
@@ -84,28 +91,22 @@ struct Config {
     ai_handicap: AiHandicap,
 }
 
-struct Scoreboard {
+struct Score {
     player: usize,
     ai: usize,
 }
 
-fn setup(
-    mut commands: Commands,
-    config: Res<Config>,
-    asset_server: Res<AssetServer>,
-    windows: Res<Windows>,
-) {
-    let paddle_speed = config.paddle_speed;
+/// Despawn all entities with a given component type
+fn despawn_with<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
+    for e in q.iter() {
+        commands.entity(e).despawn_recursive();
+    }
+}
 
+fn setup(mut commands: Commands, config: Res<Config>, windows: Res<Windows>) {
     let window = windows.primary();
 
     let height_ratio = window.height() / config.court_size[0];
-    if !window.is_focused() {
-        info!("Window is not focused!");
-    } else {
-        info!("Window is focused.")
-    }
-
     commands.spawn_bundle(Camera2dBundle {
         projection: OrthographicProjection {
             scale: height_ratio,
@@ -113,6 +114,95 @@ fn setup(
         },
         ..default()
     });
+}
+
+fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("fonts/PublicPixel-z84yD.ttf");
+    let text_style = TextStyle {
+        font,
+        font_size: 32.,
+        ..default()
+    };
+
+    commands
+        .spawn_bundle(NodeBundle {
+            style: Style {
+                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::ColumnReverse,
+                ..default()
+            },
+            color: UiColor(Color::NONE),
+            ..default()
+        })
+        .insert(MainMenu)
+        .with_children(|parent| {
+            let menu_spacing = 20.;
+            parent
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        // size: Size::new(Val::Px(150.), Val::Px(50.)),
+                        margin: UiRect::all(Val::Px(menu_spacing)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    color: Color::BLACK.into(),
+                    ..default()
+                })
+                .insert(GameType::PlayerVsAi)
+                .with_children(|button| {
+                    button.spawn_bundle(TextBundle::from_section("1 Player", text_style.clone()));
+                });
+
+            parent
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        margin: UiRect::all(Val::Px(menu_spacing)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    color: Color::BLACK.into(),
+                    ..default()
+                })
+                .insert(GameType::PlayerVsPlayer)
+                .with_children(|button| {
+                    button.spawn_bundle(TextBundle::from_section("2 Players", text_style.clone()));
+                });
+        });
+}
+
+fn gametype_button(
+    mut commands: Commands,
+    interaction_query: Query<(&Interaction, &GameType), (Changed<Interaction>, With<Button>)>,
+) {
+    for (interaction, gametype) in &interaction_query {
+        if Interaction::Clicked == *interaction {
+            info!("Gametype picked: {:?}", gametype);
+            commands.insert_resource(NextState(gametype.clone()));
+            commands.insert_resource(NextState(GameState::Ingame));
+        }
+    }
+}
+
+fn setup_game(
+    mut commands: Commands,
+    config: Res<Config>,
+    asset_server: Res<AssetServer>,
+    windows: Res<Windows>,
+    gametype: Res<NextState<GameType>>,
+) {
+    let paddle_speed = config.paddle_speed;
+
+    let window = windows.primary();
+
+    if !window.is_focused() {
+        info!("Window is not focused!");
+    } else {
+        info!("Window is focused.")
+    }
 
     commands
         .spawn_bundle(SpriteBundle {
@@ -161,22 +251,54 @@ fn setup(
                 .insert(PlayerController)
                 .insert(LeftPlayer);
 
-            parent
-                .spawn_bundle(SpriteBundle {
-                    transform: Transform::from_translation(Vec3::new(player_distance, 0.0, 1.0)),
-                    sprite: Sprite {
-                        color: Color::rgb(1.0, 1.0, 1.0),
-                        custom_size: Some(paddle_size),
+            dbg!(gametype.clone());
+            if gametype.0 == GameType::PlayerVsAi {
+                info!("Spawning AI controlled right paddle");
+                parent
+                    .spawn_bundle(SpriteBundle {
+                        transform: Transform::from_translation(Vec3::new(
+                            player_distance,
+                            0.0,
+                            1.0,
+                        )),
+                        sprite: Sprite {
+                            color: Color::rgb(1.0, 1.0, 1.0),
+                            custom_size: Some(paddle_size),
+                            ..default()
+                        },
                         ..default()
-                    },
-                    ..default()
-                })
-                .insert(Paddle {
-                    speed: paddle_speed,
-                    direction: Vec2::new(0., 0.),
-                })
-                .insert(AiController)
-                .insert(RightPlayer);
+                    })
+                    .insert(Paddle {
+                        speed: paddle_speed,
+                        direction: Vec2::new(0., 0.),
+                    })
+                    .insert(AiController)
+                    .insert(RightPlayer);
+            } else {
+                // the borrow checker freaks out if I put the common part here in a variable, so
+                // just repeat this for now
+                info!("Spawning player controlled right paddle");
+                parent
+                    .spawn_bundle(SpriteBundle {
+                        transform: Transform::from_translation(Vec3::new(
+                            player_distance,
+                            0.0,
+                            1.0,
+                        )),
+                        sprite: Sprite {
+                            color: Color::rgb(1.0, 1.0, 1.0),
+                            custom_size: Some(paddle_size),
+                            ..default()
+                        },
+                        ..default()
+                    })
+                    .insert(Paddle {
+                        speed: paddle_speed,
+                        direction: Vec2::new(0., 0.),
+                    })
+                    .insert(PlayerController)
+                    .insert(RightPlayer);
+            }
 
             parent
                 .spawn_bundle(SpriteBundle {
@@ -212,32 +334,31 @@ fn setup(
             color: UiColor(Color::NONE),
             ..default()
         })
+        .insert(Scoreboard)
         .with_children(|parent| {
             parent
                 .spawn_bundle(
-                    TextBundle::from_sections([TextSection::new("0", text_style.clone())])
-                        .with_style(Style {
-                            // position_type: PositionType::Absolute,
-                            align_content: AlignContent::FlexStart,
-                            margin: UiRect {
-                                right: Val::Percent(10.),
-                                ..default()
-                            },
+                    TextBundle::from_section("0", text_style.clone()).with_style(Style {
+                        // position_type: PositionType::Absolute,
+                        align_content: AlignContent::FlexStart,
+                        margin: UiRect {
+                            right: Val::Percent(10.),
                             ..default()
-                        }),
+                        },
+                        ..default()
+                    }),
                 )
                 .insert(PlayerController);
             parent
                 .spawn_bundle(
-                    TextBundle::from_sections([TextSection::new("0", text_style.clone())])
-                        .with_style(Style {
-                            align_content: AlignContent::FlexStart,
-                            margin: UiRect {
-                                left: Val::Percent(10.),
-                                ..default()
-                            },
+                    TextBundle::from_section("0", text_style.clone()).with_style(Style {
+                        align_content: AlignContent::FlexStart,
+                        margin: UiRect {
+                            left: Val::Percent(10.),
                             ..default()
-                        }),
+                        },
+                        ..default()
+                    }),
                 )
                 .insert(AiController);
         });
@@ -267,39 +388,45 @@ fn adjust_scale(
 }
 
 fn player_serve<T: CourtSide + Component>(
+    mut commands: Commands,
     config: Res<Config>,
-    mut state: ResMut<State<PongState>>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&Paddle, &mut Transform), (With<T>, With<PlayerController>)>,
+    mut paddle_query: Query<(&Paddle, &mut Transform), (With<T>, With<PlayerController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<PlayerController>>,
 ) {
-    if query.is_empty() {
+    if paddle_query.is_empty() {
         return;
     }
 
-    let (_paddle, paddle_transform) = query.single_mut();
+    let (_paddle, paddle_transform) = paddle_query.single_mut();
     let (mut ball, mut ball_transform) = ball_query.single_mut();
 
-    ball_transform.translation.x = -(config.court_size[0] / 2.
-        * config.players_distance_percentage
-        + config.court_size[0] / 2. * 0.2);
+    ball_transform.translation.x = paddle_transform.translation.x * 0.8;
     ball_transform.translation.y = paddle_transform.translation.y;
 
-    if keyboard_input.pressed(KeyCode::Space) {
-        state.set(PongState::Playing).unwrap();
-        if keyboard_input.pressed(KeyCode::Up) {
-            ball.velocity = config.ball_speed * Vec3::new(1., 1., 0.).normalize();
-        } else if keyboard_input.pressed(KeyCode::Down) {
-            ball.velocity = config.ball_speed * Vec3::new(1., -1., 0.).normalize();
+    let bounce_direction = {
+        if paddle_transform.translation.x.is_sign_positive() {
+            -1.
         } else {
-            ball.velocity = config.ball_speed * Vec3::new(1., 0., 0.).normalize();
+            1.
+        }
+    };
+
+    if keyboard_input.pressed(KeyCode::Space) {
+        commands.insert_resource(NextState(PongState::Playing));
+        if keyboard_input.pressed(KeyCode::Up) {
+            ball.velocity = config.ball_speed * Vec3::new(bounce_direction, 1., 0.).normalize();
+        } else if keyboard_input.pressed(KeyCode::Down) {
+            ball.velocity = config.ball_speed * Vec3::new(bounce_direction, -1., 0.).normalize();
+        } else {
+            ball.velocity = config.ball_speed * Vec3::new(bounce_direction, 0., 0.).normalize();
         }
     }
 }
 
 fn ai_serve<T: CourtSide + Component>(
+    mut commands: Commands,
     config: Res<Config>,
-    mut state: ResMut<State<PongState>>,
     mut paddle_query: Query<(&mut Paddle, &Transform), (With<T>, With<AiController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<AiController>>,
 ) {
@@ -318,25 +445,55 @@ fn ai_serve<T: CourtSide + Component>(
         + config.court_size[0] / 2. * 0.2;
     ball_transform.translation.y = paddle_transform.translation.y;
     if rand::random() {
-        state.set(PongState::Playing).unwrap();
+        commands.insert_resource(NextState(PongState::Playing));
         ball.velocity = config.ball_speed * Vec3::new(-1., 0., 0.).normalize();
     }
 }
 
 fn keyboard_movement_input(
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut Paddle, With<PlayerController>>,
+    mut left_paddle_query: Query<
+        &mut Paddle,
+        (
+            With<LeftPlayer>,
+            Without<RightPlayer>,
+            With<PlayerController>,
+        ),
+    >,
+    mut right_paddle_query: Query<
+        &mut Paddle,
+        (
+            With<RightPlayer>,
+            Without<LeftPlayer>,
+            With<PlayerController>,
+        ),
+    >,
 ) {
-    let mut paddle = query.single_mut();
-    let mut direction = 0.0;
-    if keyboard_input.pressed(KeyCode::Up) {
-        direction += 1.0;
-    }
-    if keyboard_input.pressed(KeyCode::Down) {
-        direction -= 1.0;
+    if !left_paddle_query.is_empty() {
+        let mut left_paddle = left_paddle_query.single_mut();
+        let mut direction = 0.0;
+        if keyboard_input.pressed(KeyCode::Comma) {
+            direction += 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::O) {
+            direction -= 1.0;
+        }
+
+        left_paddle.direction.y = direction;
     }
 
-    paddle.direction.y = direction;
+    if !right_paddle_query.is_empty() {
+        let mut right_paddle = right_paddle_query.single_mut();
+        let mut direction = 0.0;
+        if keyboard_input.pressed(KeyCode::Up) {
+            direction += 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::Down) {
+            direction -= 1.0;
+        }
+
+        right_paddle.direction.y = direction;
+    }
 }
 
 fn ai_movement_input(
@@ -488,9 +645,9 @@ fn ball_collision(
 }
 
 fn ball_scoring(
-    mut state: ResMut<State<PongState>>,
+    mut commands: Commands,
     ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
-    mut scoreboard: ResMut<Scoreboard>,
+    mut scoreboard: ResMut<Score>,
     court_collider_query: Query<(&Court, &Transform, &Sprite), Without<Ball>>,
 ) {
     let (_ball, ball_transform, ball_sprite) = ball_query.single();
@@ -512,11 +669,11 @@ fn ball_scoring(
         match collision {
             Collision::Left => {
                 scoreboard.ai += 1;
-                state.set(PongState::Serve(Side::Left)).unwrap();
+                commands.insert_resource(NextState(PongState::Serve(Side::Left)));
             }
             Collision::Right => {
                 scoreboard.player += 1;
-                state.set(PongState::Serve(Side::Right)).unwrap();
+                commands.insert_resource(NextState(PongState::Serve(Side::Right)));
             }
             _ => (),
         }
@@ -524,7 +681,7 @@ fn ball_scoring(
 }
 
 fn scoreboard(
-    scoreboard: ResMut<Scoreboard>,
+    scoreboard: ResMut<Score>,
     mut player_scoreboard: Query<&mut Text, (With<PlayerController>, Without<AiController>)>,
     mut ai_scoreboard: Query<&mut Text, (With<AiController>, Without<PlayerController>)>,
 ) {
@@ -543,7 +700,7 @@ fn main() {
         })
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(Scoreboard { player: 0, ai: 0 })
+        .insert_resource(Score { player: 0, ai: 0 })
         .insert_resource(Config {
             paddle_speed: 1000.,
             ball_speed: 1000.,
@@ -553,43 +710,73 @@ fn main() {
                 view_percentage: 0.5,
             },
         })
-        .add_state(PongState::Serve(Side::Left))
+        .add_loopless_state(GameState::MainMenu)
+        .add_loopless_state(GameType::PlayerVsAi)
+        .add_loopless_state(PongState::Serve(Side::Left))
         .add_startup_system(setup)
-        .add_system(adjust_scale)
+        .add_enter_system(GameState::MainMenu, setup_menu)
+        .add_enter_system(GameState::Ingame, setup_game)
+        .add_exit_system(GameState::MainMenu, despawn_with::<MainMenu>)
+        .add_exit_system(GameState::Ingame, despawn_with::<Court>)
+        .add_exit_system(GameState::Ingame, despawn_with::<Scoreboard>)
+        .add_system(gametype_button.run_in_state(GameState::MainMenu))
+        .add_system(adjust_scale.run_in_state(GameState::Ingame))
         .add_system_set(
-            SystemSet::on_update(PongState::Serve(Side::Left))
-                .with_system(player_serve::<LeftPlayer>.before(paddle_movement))
-                .with_system(ai_serve::<LeftPlayer>.before(paddle_movement))
-                .with_system(keyboard_movement_input.before(paddle_movement))
-                .with_system(paddle_movement),
+            ConditionSet::new()
+                .run_in_state(GameState::Ingame)
+                .run_in_state(PongState::Serve(Side::Left))
+                .label(GameloopStage::Input)
+                .with_system(player_serve::<LeftPlayer>)
+                .with_system(ai_serve::<LeftPlayer>.run_in_state(GameType::PlayerVsAi))
+                .with_system(keyboard_movement_input)
+                .into(),
         )
         .add_system_set(
-            SystemSet::on_update(PongState::Serve(Side::Right))
-                .with_system(player_serve::<RightPlayer>.before(paddle_movement))
-                .with_system(ai_serve::<RightPlayer>.before(paddle_movement))
-                .with_system(keyboard_movement_input.before(paddle_movement))
-                .with_system(paddle_movement),
+            ConditionSet::new()
+                .run_in_state(GameState::Ingame)
+                .run_in_state(PongState::Serve(Side::Right))
+                .label(GameloopStage::Input)
+                .with_system(player_serve::<RightPlayer>)
+                .with_system(ai_serve::<RightPlayer>.run_in_state(GameType::PlayerVsAi))
+                .with_system(keyboard_movement_input)
+                .into(),
         )
         .add_system_set(
-            SystemSet::on_update(PongState::Playing)
+            ConditionSet::new()
+                .run_in_state(GameState::Ingame)
+                .run_in_state(PongState::Playing)
                 .label(GameloopStage::Input)
                 .with_system(keyboard_movement_input)
-                .with_system(ai_movement_input),
+                .with_system(ai_movement_input.run_in_state(GameType::PlayerVsAi))
+                .into(),
         )
         .add_system_set(
-            SystemSet::on_update(PongState::Playing)
+            ConditionSet::new()
+                .run_in_state(GameState::Ingame)
                 .label(GameloopStage::Physics)
                 .after(GameloopStage::Input)
-                .with_system(ball_movement.before(ball_collision))
-                .with_system(paddle_movement.before(ball_collision))
-                .with_system(ball_collision),
+                .with_system(ball_movement)
+                .with_system(paddle_movement)
+                .into(),
+        )
+        .add_system(
+            ball_collision
+                .run_in_state(GameState::Ingame)
+                .after(GameloopStage::Physics),
         )
         .add_system_set(
-            SystemSet::on_update(PongState::Playing)
+            ConditionSet::new()
+                .run_in_state(GameState::Ingame)
+                .run_in_state(PongState::Playing)
                 .label(GameloopStage::Scoring)
                 .after(GameloopStage::Physics)
                 .with_system(ball_scoring)
-                .with_system(scoreboard.after(ball_scoring)),
+                .into(),
+        )
+        .add_system(
+            scoreboard
+                .run_in_state(GameState::Ingame)
+                .after(GameloopStage::Scoring),
         )
         .run();
 }
