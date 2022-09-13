@@ -472,10 +472,10 @@ fn keyboard_movement_input(
     if !left_paddle_query.is_empty() {
         let mut left_paddle = left_paddle_query.single_mut();
         let mut direction = 0.0;
-        if keyboard_input.pressed(KeyCode::Comma) {
+        if keyboard_input.pressed(KeyCode::W) {
             direction += 1.0;
         }
-        if keyboard_input.pressed(KeyCode::O) {
+        if keyboard_input.pressed(KeyCode::S) {
             direction -= 1.0;
         }
 
