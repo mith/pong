@@ -755,7 +755,7 @@ fn main() {
                 .run_in_state(GameState::Ingame)
                 .label(GameloopStage::Physics)
                 .after(GameloopStage::Input)
-                .with_system(ball_movement)
+                .with_system(ball_movement.run_in_state(PongState::Playing))
                 .with_system(paddle_movement)
                 .into(),
         )
