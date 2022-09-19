@@ -1,8 +1,14 @@
 use bevy::{
+    ecs::schedule::ShouldRun,
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
+    tasks::IoTaskPool,
 };
+use bevy_ggrs::{GGRSPlugin, Rollback, RollbackIdProvider, SessionType};
+use bytemuck::{Pod, Zeroable};
+use ggrs::{Config, InputStatus, P2PSession, PlayerHandle, SessionBuilder};
 use iyes_loopless::prelude::*;
+use matchbox_socket::WebRtcSocket;
 
 #[derive(Component)]
 struct Court;
@@ -47,11 +53,13 @@ struct Scoreboard;
 enum GameType {
     PlayerVsAi,
     PlayerVsPlayer,
+    Online,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum GameState {
     MainMenu,
+    Lobby,
     Ingame,
 }
 
@@ -64,17 +72,20 @@ enum PongState {
 #[derive(SystemLabel)]
 enum GameloopStage {
     Input,
-    Scoring,
     Physics,
+    Scoring,
+    Movement,
+    Collision,
 }
 
 #[derive(Debug, Component)]
 struct Paddle {
+    handle: usize,
     speed: f32,
     direction: Vec2,
 }
 
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
 struct Ball {
     velocity: Vec3,
 }
@@ -83,7 +94,7 @@ struct AiHandicap {
     view_percentage: f32,
 }
 
-struct Config {
+struct PongConfig {
     court_size: [f32; 2],
     players_distance_percentage: f32,
     paddle_speed: f32,
@@ -96,6 +107,8 @@ struct Score {
     ai: usize,
 }
 
+const ROLLBACK_DEFAULT: &str = "rollback_default";
+
 /// Despawn all entities with a given component type
 fn despawn_with<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>) {
     for e in q.iter() {
@@ -103,7 +116,7 @@ fn despawn_with<T: Component>(mut commands: Commands, q: Query<Entity, With<T>>)
     }
 }
 
-fn setup(mut commands: Commands, config: Res<Config>, windows: Res<Windows>) {
+fn setup(mut commands: Commands, config: Res<PongConfig>, windows: Res<Windows>) {
     let window = windows.primary();
 
     let height_ratio = window.height() / config.court_size[0];
@@ -138,7 +151,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(MainMenu)
         .with_children(|parent| {
-            let menu_spacing = 20.;
+            let menu_spacing = 40.;
             parent
                 .spawn_bundle(ButtonBundle {
                     style: Style {
@@ -171,6 +184,21 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .with_children(|button| {
                     button.spawn_bundle(TextBundle::from_section("2 Players", text_style.clone()));
                 });
+            parent
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        margin: UiRect::all(Val::Px(menu_spacing)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    color: Color::BLACK.into(),
+                    ..default()
+                })
+                .insert(GameType::Online)
+                .with_children(|button| {
+                    button.spawn_bundle(TextBundle::from_section("Online", text_style.clone()));
+                });
         });
 }
 
@@ -182,17 +210,22 @@ fn gametype_button(
         if Interaction::Clicked == *interaction {
             info!("Gametype picked: {:?}", gametype);
             commands.insert_resource(NextState(gametype.clone()));
-            commands.insert_resource(NextState(GameState::Ingame));
+            if *gametype == GameType::Online {
+                commands.insert_resource(NextState(GameState::Lobby));
+            } else {
+                commands.insert_resource(NextState(GameState::Ingame));
+            }
         }
     }
 }
 
 fn setup_game(
     mut commands: Commands,
-    config: Res<Config>,
+    config: Res<PongConfig>,
     asset_server: Res<AssetServer>,
     windows: Res<Windows>,
-    gametype: Res<NextState<GameType>>,
+    gametype: Res<CurrentState<GameType>>,
+    mut rip: ResMut<RollbackIdProvider>,
 ) {
     let paddle_speed = config.paddle_speed;
 
@@ -245,11 +278,13 @@ fn setup_game(
                     ..default()
                 })
                 .insert(Paddle {
+                    handle: 0,
                     speed: paddle_speed,
                     direction: Vec2::new(0., 0.),
                 })
                 .insert(PlayerController)
-                .insert(LeftPlayer);
+                .insert(LeftPlayer)
+                .insert(Rollback::new(rip.next_id()));
 
             dbg!(gametype.clone());
             if gametype.0 == GameType::PlayerVsAi {
@@ -269,6 +304,7 @@ fn setup_game(
                         ..default()
                     })
                     .insert(Paddle {
+                        handle: 1,
                         speed: paddle_speed,
                         direction: Vec2::new(0., 0.),
                     })
@@ -293,11 +329,13 @@ fn setup_game(
                         ..default()
                     })
                     .insert(Paddle {
+                        handle: 1,
                         speed: paddle_speed,
                         direction: Vec2::new(0., 0.),
                     })
                     .insert(PlayerController)
-                    .insert(RightPlayer);
+                    .insert(RightPlayer)
+                    .insert(Rollback::new(rip.next_id()));
             }
 
             parent
@@ -365,7 +403,7 @@ fn setup_game(
 }
 
 fn adjust_scale(
-    config: Res<Config>,
+    config: Res<PongConfig>,
     windows: Res<Windows>,
     mut projections: Query<&mut OrthographicProjection, With<Camera>>,
     mut player_score: Query<&mut Text, (With<PlayerController>, Without<AiController>)>,
@@ -389,8 +427,8 @@ fn adjust_scale(
 
 fn player_serve<T: CourtSide + Component>(
     mut commands: Commands,
-    config: Res<Config>,
-    keyboard_input: Res<Input<KeyCode>>,
+    config: Res<PongConfig>,
+    inputs: Res<Vec<(BoxInput, InputStatus)>>,
     mut paddle_query: Query<(&Paddle, &mut Transform), (With<T>, With<PlayerController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<PlayerController>>,
 ) {
@@ -398,7 +436,7 @@ fn player_serve<T: CourtSide + Component>(
         return;
     }
 
-    let (_paddle, paddle_transform) = paddle_query.single_mut();
+    let (paddle, paddle_transform) = paddle_query.single_mut();
     let (mut ball, mut ball_transform) = ball_query.single_mut();
 
     ball_transform.translation.x = paddle_transform.translation.x * 0.8;
@@ -412,11 +450,12 @@ fn player_serve<T: CourtSide + Component>(
         }
     };
 
-    if keyboard_input.pressed(KeyCode::Space) {
+    let input = inputs[paddle.handle as usize].0.inp;
+    if input & INPUT_SERVE != 0 {
         commands.insert_resource(NextState(PongState::Playing));
-        if keyboard_input.pressed(KeyCode::Up) {
+        if input & INPUT_UP != 0 && input & INPUT_DOWN == 0 {
             ball.velocity = config.ball_speed * Vec3::new(bounce_direction, 1., 0.).normalize();
-        } else if keyboard_input.pressed(KeyCode::Down) {
+        } else if input & INPUT_UP == 0 && input & INPUT_DOWN != 0 {
             ball.velocity = config.ball_speed * Vec3::new(bounce_direction, -1., 0.).normalize();
         } else {
             ball.velocity = config.ball_speed * Vec3::new(bounce_direction, 0., 0.).normalize();
@@ -426,7 +465,7 @@ fn player_serve<T: CourtSide + Component>(
 
 fn ai_serve<T: CourtSide + Component>(
     mut commands: Commands,
-    config: Res<Config>,
+    config: Res<PongConfig>,
     mut paddle_query: Query<(&mut Paddle, &Transform), (With<T>, With<AiController>)>,
     mut ball_query: Query<(&mut Ball, &mut Transform), Without<AiController>>,
 ) {
@@ -468,6 +507,7 @@ fn keyboard_movement_input(
             With<PlayerController>,
         ),
     >,
+    gametype: Res<CurrentState<GameType>>,
 ) {
     if !left_paddle_query.is_empty() {
         let mut left_paddle = left_paddle_query.single_mut();
@@ -494,12 +534,27 @@ fn keyboard_movement_input(
 
         right_paddle.direction.y = direction;
     }
+
+    if !left_paddle_query.is_empty() && gametype.0 == GameType::PlayerVsAi {
+        let mut left_paddle = left_paddle_query.single_mut();
+        let mut direction: f32 = 0.0;
+        if keyboard_input.pressed(KeyCode::Up) {
+            direction += 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::Down) {
+            direction -= 1.0;
+        }
+
+        if direction.abs() > 0. {
+            left_paddle.direction.y = direction;
+        }
+    }
 }
 
 fn ai_movement_input(
     mut paddle_query: Query<(&mut Paddle, &Transform, &Sprite), With<AiController>>,
     ball_query: Query<(&Ball, &Transform), Without<AiController>>,
-    config: Res<Config>,
+    config: Res<PongConfig>,
 ) {
     let court_width = config.court_size[0];
     let (mut paddle, paddle_transform, paddle_sprite) = paddle_query.single_mut();
@@ -528,15 +583,22 @@ fn ai_movement_input(
 }
 
 fn paddle_movement(
-    time: Res<Time>,
     mut paddle_query: Query<(&mut Paddle, &mut Transform, &Sprite)>,
-    config: Res<Config>,
+    inputs: Res<Vec<(BoxInput, InputStatus)>>,
+    config: Res<PongConfig>,
 ) {
-    // clamp the timestep to stop the ball from escaping when the game starts
-    let delta_seconds = f32::min(0.2, time.delta_seconds());
     let half_court_height = config.court_size[1] / 2.0;
 
     for (mut paddle, mut transform, sprite) in &mut paddle_query {
+        let input = inputs[paddle.handle as usize].0.inp;
+
+        if input & INPUT_UP != 0 && input & INPUT_DOWN == 0 {
+            paddle.direction.y += 1.;
+        }
+        if input & INPUT_UP == 0 && input & INPUT_DOWN != 0 {
+            paddle.direction.y -= 1.;
+        }
+
         let paddle_half_height = sprite
             .custom_size
             .expect("Sprite should have custom height")
@@ -544,7 +606,8 @@ fn paddle_movement(
             / 2.0;
 
         let translation = &mut transform.translation;
-        translation.y += delta_seconds * paddle.direction.y * paddle.speed;
+
+        translation.y += paddle.direction.y * paddle.speed;
         translation.y = translation.y.clamp(
             -half_court_height + paddle_half_height,
             half_court_height - paddle_half_height,
@@ -554,12 +617,9 @@ fn paddle_movement(
     }
 }
 
-fn ball_movement(time: Res<Time>, mut ball_query: Query<(&Ball, &mut Transform)>) {
-    // clamp the timestep to stop the ball from escaping when the game starts
-    let delta_seconds = f32::min(0.2, time.delta_seconds());
-
+fn ball_movement(mut ball_query: Query<(&Ball, &mut Transform)>) {
     let (ball, mut transform) = ball_query.single_mut();
-    transform.translation += ball.velocity * delta_seconds;
+    transform.translation += ball.velocity;
 }
 
 fn ball_collision(
@@ -692,91 +752,320 @@ fn scoreboard(
     text.sections[0].value = format!("{}", scoreboard.ai);
 }
 
-fn main() {
-    App::new()
-        .insert_resource(WindowDescriptor {
-            fit_canvas_to_parent: true,
+#[derive(Debug)]
+pub struct GGRSConfig;
+impl Config for GGRSConfig {
+    type Input = BoxInput;
+    type State = u8;
+    type Address = String;
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, PartialEq, Eq, Pod, Zeroable)]
+pub struct BoxInput {
+    pub inp: u8,
+}
+
+fn start_matchbox_socket(mut commands: Commands) {
+    let room_url = "ws://127.0.0.1:3536/pong?next=2";
+    info!("connecting to matchbox server: {:?}", room_url);
+    let (socket, message_loop) = WebRtcSocket::new(room_url);
+
+    // The message loop needs to be awaited, or nothing will happen.
+    // We do this here using bevy's task system.
+    let task_pool = IoTaskPool::get();
+    task_pool.spawn(message_loop).detach();
+
+    commands.insert_resource(Some(socket));
+}
+
+#[derive(Component)]
+struct LobbyText;
+#[derive(Component)]
+struct LobbyUI;
+
+fn setup_lobby(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn_bundle(NodeBundle {
+            style: Style {
+                size: Size::new(Val::Percent(100.), Val::Percent(100.)),
+                position_type: PositionType::Absolute,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::FlexEnd,
+                ..default()
+            },
             ..default()
         })
-        .add_plugins(DefaultPlugins)
-        .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(Score { player: 0, ai: 0 })
-        .insert_resource(Config {
-            paddle_speed: 1000.,
-            ball_speed: 1000.,
-            court_size: [1600., 1000.],
-            players_distance_percentage: 0.4,
-            ai_handicap: AiHandicap {
-                view_percentage: 0.5,
-            },
+        .with_children(|parent| {
+            parent
+                .spawn_bundle(TextBundle {
+                    style: Style {
+                        align_self: AlignSelf::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    text: Text::from_section(
+                        "Entering lobby...",
+                        TextStyle {
+                            font: asset_server.load("fonts/PublicPixel-z84yD.ttf"),
+                            font_size: 40.,
+                            color: Color::BLACK,
+                        },
+                    ),
+                    ..default()
+                })
+                .insert(LobbyText);
         })
-        .add_loopless_state(GameState::MainMenu)
-        .add_loopless_state(GameType::PlayerVsAi)
-        .add_loopless_state(PongState::Serve(Side::Left))
-        .add_startup_system(setup)
-        .add_enter_system(GameState::MainMenu, setup_menu)
-        .add_enter_system(GameState::Ingame, setup_game)
-        .add_exit_system(GameState::MainMenu, despawn_with::<MainMenu>)
-        .add_exit_system(GameState::Ingame, despawn_with::<Court>)
-        .add_exit_system(GameState::Ingame, despawn_with::<Scoreboard>)
-        .add_system(gametype_button.run_in_state(GameState::MainMenu))
-        .add_system(adjust_scale.run_in_state(GameState::Ingame))
-        .add_system_set(
-            ConditionSet::new()
-                .run_in_state(GameState::Ingame)
-                .run_in_state(PongState::Serve(Side::Left))
-                .label(GameloopStage::Input)
-                .with_system(player_serve::<LeftPlayer>)
-                .with_system(ai_serve::<LeftPlayer>.run_in_state(GameType::PlayerVsAi))
-                .with_system(keyboard_movement_input)
-                .into(),
+        .insert(LobbyUI);
+}
+
+fn lobby_cleanup(query: Query<Entity, With<LobbyUI>>, mut commands: Commands) {
+    for e in query.iter() {
+        commands.entity(e).despawn_recursive();
+    }
+}
+
+fn lobby(
+    mut commands: Commands,
+    mut socket: ResMut<Option<WebRtcSocket>>,
+    mut text_query: Query<&mut Text, With<LobbyText>>,
+) {
+    let socket = socket.as_mut();
+
+    socket.as_mut().unwrap().accept_new_connections().len();
+
+    text_query.single_mut().sections[0].value = format!("Waiting for another player...");
+
+    let num_connected = socket.as_ref().unwrap().connected_peers().len();
+    if num_connected == 0 {
+        return;
+    }
+
+    info!("Enough players in lobby, starting game.");
+
+    let socket = socket.take().unwrap();
+
+    let players = socket.players();
+
+    let max_prediction = 12;
+
+    // create a GGRS P2P session
+    let mut sess_build = SessionBuilder::<GGRSConfig>::new()
+        .with_num_players(2)
+        .with_max_prediction_window(max_prediction)
+        .with_input_delay(2)
+        .with_fps(60)
+        .expect("Invalid fps.");
+
+    for (i, player) in players.into_iter().enumerate() {
+        sess_build = sess_build
+            .add_player(player, i)
+            .expect("Failed to add player.");
+    }
+
+    // start the GGRS session
+    let sess = sess_build
+        .start_p2p_session(socket)
+        .expect("Failed to add player.");
+
+    commands.insert_resource(sess);
+    commands.insert_resource(SessionType::P2PSession);
+
+    commands.insert_resource(NextState(GameState::Ingame));
+}
+
+const INPUT_UP: u8 = 1 << 0;
+const INPUT_DOWN: u8 = 1 << 1;
+const INPUT_SERVE: u8 = 1 << 2;
+
+fn input(_handle: In<PlayerHandle>, keyboard_input: Res<Input<KeyCode>>) -> BoxInput {
+    let mut input: u8 = 0;
+
+    if keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up) {
+        input |= INPUT_UP;
+    }
+    if keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down) {
+        input |= INPUT_DOWN;
+    }
+    if keyboard_input.pressed(KeyCode::Space) {
+        input |= INPUT_SERVE;
+    }
+
+    BoxInput { inp: input }
+}
+
+fn log_ggrs_events(mut session: ResMut<P2PSession<GGRSConfig>>) {
+    for event in session.events() {
+        info!("GGRS Event: {:?}", event);
+    }
+}
+
+fn main() {
+    let mut app = App::new();
+
+    GGRSPlugin::<GGRSConfig>::new()
+        .with_update_frequency(60)
+        .with_input_system(input)
+        .register_rollback_type::<Transform>()
+        .register_rollback_type::<Ball>()
+        .with_rollback_schedule(
+            Schedule::default().with_stage(
+                ROLLBACK_DEFAULT,
+                SystemStage::parallel()
+                    .with_system(
+                        player_serve::<LeftPlayer>
+                            .run_in_state(GameState::Ingame)
+                            .run_in_state(PongState::Serve(Side::Left))
+                            .label(GameloopStage::Input),
+                    )
+                    .with_system(
+                        player_serve::<RightPlayer>
+                            .run_in_state(GameState::Ingame)
+                            .run_in_state(PongState::Serve(Side::Right))
+                            .label(GameloopStage::Input),
+                    )
+                    .with_system(
+                        paddle_movement
+                            .run_in_state(GameState::Ingame)
+                            .after(GameloopStage::Input)
+                            .label(GameloopStage::Movement),
+                    )
+                    .with_system(
+                        ball_movement
+                            .run_in_state(GameState::Ingame)
+                            .run_in_state(PongState::Playing)
+                            .after(GameloopStage::Input)
+                            .label(GameloopStage::Movement),
+                    )
+                    .with_system(
+                        ball_collision
+                            .run_in_state(GameState::Ingame)
+                            .run_in_state(PongState::Playing)
+                            .after(GameloopStage::Movement)
+                            .label(GameloopStage::Collision),
+                    )
+                    .with_system(
+                        ball_scoring
+                            .run_in_state(GameState::Ingame)
+                            .run_in_state(PongState::Playing)
+                            .after(GameloopStage::Collision)
+                            .label(GameloopStage::Scoring),
+                    )
+                    .with_system(
+                        scoreboard
+                            .run_in_state(GameState::Ingame)
+                            .after(GameloopStage::Scoring),
+                    ),
+            ),
         )
-        .add_system_set(
-            ConditionSet::new()
-                .run_in_state(GameState::Ingame)
-                .run_in_state(PongState::Serve(Side::Right))
-                .label(GameloopStage::Input)
-                .with_system(player_serve::<RightPlayer>)
-                .with_system(ai_serve::<RightPlayer>.run_in_state(GameType::PlayerVsAi))
-                .with_system(keyboard_movement_input)
-                .into(),
-        )
-        .add_system_set(
-            ConditionSet::new()
-                .run_in_state(GameState::Ingame)
-                .run_in_state(PongState::Playing)
-                .label(GameloopStage::Input)
-                .with_system(keyboard_movement_input)
-                .with_system(ai_movement_input.run_in_state(GameType::PlayerVsAi))
-                .into(),
-        )
-        .add_system_set(
-            ConditionSet::new()
-                .run_in_state(GameState::Ingame)
-                .label(GameloopStage::Physics)
-                .after(GameloopStage::Input)
-                .with_system(ball_movement.run_in_state(PongState::Playing))
-                .with_system(paddle_movement)
-                .into(),
-        )
-        .add_system(
-            ball_collision
-                .run_in_state(GameState::Ingame)
-                .after(GameloopStage::Physics),
-        )
-        .add_system_set(
-            ConditionSet::new()
-                .run_in_state(GameState::Ingame)
-                .run_in_state(PongState::Playing)
-                .label(GameloopStage::Scoring)
-                .after(GameloopStage::Physics)
-                .with_system(ball_scoring)
-                .into(),
-        )
-        .add_system(
-            scoreboard
-                .run_in_state(GameState::Ingame)
-                .after(GameloopStage::Scoring),
-        )
-        .run();
+        .build(&mut app);
+
+    app.insert_resource(WindowDescriptor {
+        fit_canvas_to_parent: true,
+        ..default()
+    })
+    .add_plugins(DefaultPlugins)
+    .insert_resource(ClearColor(Color::BLACK))
+    .insert_resource(Score { player: 0, ai: 0 })
+    .insert_resource(PongConfig {
+        paddle_speed: 10.,
+        ball_speed: 20.,
+        court_size: [1600., 1000.],
+        players_distance_percentage: 0.4,
+        ai_handicap: AiHandicap {
+            view_percentage: 0.5,
+        },
+    })
+    .add_loopless_state(GameState::MainMenu)
+    .add_loopless_state(GameType::PlayerVsAi)
+    .add_loopless_state(PongState::Serve(Side::Left))
+    .add_startup_system(setup)
+    .add_enter_system(GameState::MainMenu, setup_menu)
+    .add_enter_system(GameState::Ingame, setup_game)
+    .add_exit_system(GameState::MainMenu, despawn_with::<MainMenu>)
+    .add_exit_system(GameState::Ingame, despawn_with::<Court>)
+    .add_exit_system(GameState::Ingame, despawn_with::<Scoreboard>)
+    .add_system(gametype_button.run_in_state(GameState::MainMenu))
+    .add_system(adjust_scale.run_in_state(GameState::Ingame))
+    .add_enter_system_set(
+        GameState::Lobby,
+        ConditionSet::new()
+            .with_system(start_matchbox_socket)
+            .with_system(setup_lobby)
+            .into(),
+    )
+    .add_exit_system(GameState::Lobby, lobby_cleanup)
+    .add_system(lobby.run_in_state(GameState::Lobby))
+    .add_system_set(
+        ConditionSet::new()
+            .run_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .with_system(log_ggrs_events)
+            .into(),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .run_in_state(PongState::Serve(Side::Left))
+            .label(GameloopStage::Input)
+            .with_system(player_serve::<LeftPlayer>)
+            .with_system(ai_serve::<LeftPlayer>.run_in_state(GameType::PlayerVsAi))
+            .with_system(keyboard_movement_input)
+            .into(),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .run_in_state(PongState::Serve(Side::Right))
+            .label(GameloopStage::Input)
+            .with_system(player_serve::<RightPlayer>)
+            .with_system(ai_serve::<RightPlayer>.run_in_state(GameType::PlayerVsAi))
+            .with_system(keyboard_movement_input)
+            .into(),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .run_in_state(PongState::Playing)
+            .label(GameloopStage::Input)
+            .with_system(keyboard_movement_input)
+            .with_system(ai_movement_input.run_in_state(GameType::PlayerVsAi))
+            .into(),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .label(GameloopStage::Physics)
+            .after(GameloopStage::Input)
+            .with_system(ball_movement.run_in_state(PongState::Playing))
+            .with_system(paddle_movement)
+            .into(),
+    )
+    .add_system(
+        ball_collision
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .after(GameloopStage::Physics),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .run_in_state(PongState::Playing)
+            .label(GameloopStage::Scoring)
+            .after(GameloopStage::Physics)
+            .with_system(ball_scoring)
+            .into(),
+    )
+    .add_system(
+        scoreboard
+            .run_not_in_state(GameType::Online)
+            .run_in_state(GameState::Ingame)
+            .after(GameloopStage::Scoring),
+    )
+    .run();
 }

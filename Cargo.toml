@@ -13,6 +13,11 @@ opt-level = "z"
 [dependencies]
 rand = { version = "0.8.5", features = ["alloc"] }
 iyes_loopless = "0.7.1"
+ggrs = "0.9"
+bevy_ggrs = "0.10.0"
+matchbox_socket = { git="https://github.com/johanhelsing/matchbox", features = ["ggrs-socket"] }
+# matchbox_socket = { version="0.3.0", features = ["ggrs-socket"] }
+bytemuck = { version = "1.7", features = ["derive"] }
 
 [dependencies.bevy]
 version = "0.8"
@@ -28,6 +33,9 @@ features = [
 	"x11",
 	"filesystem_watcher"
 	]
+
+[target.'cfg(target_arch = "wasm32-unknown-unknown")'.dependencies]
+ggrs = { version = "0.9", features = ["wasm-bindgen"] }
 
 [target.'cfg(target_arch = "wasm32-unknown-unknown")'.dependencies.bevy]
 version = "0.8"

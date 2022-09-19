@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-local.url = "/home/simon/src/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
       url = "github:nix-community/fenix";
@@ -99,23 +100,26 @@
             doCheck = false;
           };
 
-        packages.pong-web = pkgs.stdenv.mkDerivation {
-          name = "pong-web";
-          src = ./.;
-          nativeBuildInputs = [
-            pkgs.wasm-bindgen-cli
-            pkgs.binaryen
-          ];
-          phases = ["unpackPhase" "installPhase"];
-          installPhase = ''
-            mkdir -p $out
-            wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
-            mv $out/pong_bg.wasm .
-            wasm-opt -Oz -o $out/pong_bg.wasm pong_bg.wasm
-            cp web/* $out/
-            cp -r assets $out/assets
-          '';
-        };
+        packages.pong-web = let
+          local = import inputs.nixpkgs-local {system = "${system}";};
+        in
+          pkgs.stdenv.mkDerivation {
+            name = "pong-web";
+            src = ./.;
+            nativeBuildInputs = [
+              local.wasm-bindgen-cli
+              pkgs.binaryen
+            ];
+            phases = ["unpackPhase" "installPhase"];
+            installPhase = ''
+              mkdir -p $out
+              wasm-bindgen --out-dir $out --out-name pong --target web ${self.packages.${system}.pong-wasm}/bin/pong.wasm
+              mv $out/pong_bg.wasm .
+              wasm-opt -Oz -o $out/pong_bg.wasm pong_bg.wasm
+              cp web/* $out/
+              cp -r assets $out/assets
+            '';
+          };
 
         packages.pong-server = pkgs.writeShellScriptBin "run-pong-server" ''
           ${pkgs.simple-http-server}/bin/simple-http-server -i -c=html,wasm,ttf,js -- ${self.packages.${system}.pong-web}/
