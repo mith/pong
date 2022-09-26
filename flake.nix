@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs-local.url = "/home/simon/src/nixpkgs";
+    nixpkgs-local.url = "github:mith/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
       url = "github:nix-community/fenix";
@@ -14,6 +14,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
+    terranix.url = "github:terranix/terranix";
+    matchbox = {
+      url = "github:johanhelsing/matchbox";
+      flake = false;
+    };
   };
 
   outputs = inputs @ {
@@ -125,6 +130,44 @@
           ${pkgs.simple-http-server}/bin/simple-http-server -i -c=html,wasm,ttf,js -- ${self.packages.${system}.pong-web}/
         '';
 
+        packages.signalling-server = crane-lib.buildPackage {
+          name = "matchbox-server";
+          src = inputs.matchbox;
+          cargoBuildCommand = "cargo build --release -p matchbox_server";
+        };
+
+        packages.signalling-server-image = pkgs.dockerTools.buildImage {
+          name = "signalling-server";
+          tag = "latest";
+          copyToRoot = pkgs.buildEnv {
+            name = "signalling-server";
+            paths = [
+              self.packages.${system}.signalling-server
+              pkgs.busybox
+            ];
+          };
+          config = {
+            Cmd = ["sh" "-c" "${self.packages.${system}.signalling-server}/bin/matchbox_server 0.0.0.0:$PORT"];
+          };
+        };
+
+        packages.infra = inputs.terranix.lib.terranixConfiguration {
+          inherit system;
+          modules = [
+            {
+              terraform.required_providers.heroku.source = "heroku/heroku";
+              provider.heroku = {
+                email = "simonvoordouw@gmail.com";
+              };
+
+              resource.heroku_app.pong = {
+                name = "pong-signalling-server";
+                region = "eu";
+              };
+            }
+          ];
+        };
+
         defaultPackage = self.packages.${system}.pong;
 
         apps.pong = flake-utils.lib.mkApp {
@@ -141,7 +184,7 @@
               statix.enable = true;
               rustfmt.enable = true;
               clippy = {
-                enable = true;
+                enable = false;
                 entry = let
                   rust = toolchain.withComponents ["clippy"];
                 in
@@ -157,11 +200,14 @@
             ${self.checks.${system}.pre-commit-check.shellHook}
           '';
           inputsFrom = [self.packages.${system}.pong-bin];
-          nativeBuildInputs =
+          nativeBuildInputs = with pkgs;
             [
               (toolchain.withComponents ["cargo" "rustc" "rust-src" "rustfmt" "clippy"])
-              pkgs.rust-analyzer
-              pkgs.lldb
+              rust-analyzer
+              lldb
+              nil
+              terraform
+              heroku
             ]
             ++ nativeBuildInputs;
         };
