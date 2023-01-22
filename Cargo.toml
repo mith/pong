@@ -12,15 +12,19 @@ opt-level = "z"
 
 [dependencies]
 rand = { version = "0.8.5", features = ["alloc"] }
-iyes_loopless = "0.7.1"
+iyes_loopless = "0.9.1"
 ggrs = "0.9"
-bevy_ggrs = "0.10.0"
-matchbox_socket = { git="https://github.com/johanhelsing/matchbox", features = ["ggrs-socket"] }
-# matchbox_socket = { version="0.3.0", features = ["ggrs-socket"] }
-bytemuck = { version = "1.7", features = ["derive"] }
+bevy_ggrs = "0.11.0"
+matchbox_socket = { version="0.5", features = ["ggrs-socket"] }
+bytemuck = { version = "1.12", features = ["derive"] }
+
+# [patch.crates-io]
+# ggrs = {git = "https://github.com/gschup/ggrs"}
+# matchbox_socket = { git="https://github.com/johanhelsing/matchbox" }
+# bevy_ggrs = {git="https://github.com/gschup/bevy_ggrs"}
 
 [dependencies.bevy]
-version = "0.8"
+version = "0.9"
 default-features = false
 features = [
 	"bevy_asset",
@@ -38,7 +42,7 @@ features = [
 ggrs = { version = "0.9", features = ["wasm-bindgen"] }
 
 [target.'cfg(target_arch = "wasm32-unknown-unknown")'.dependencies.bevy]
-version = "0.8"
+version = "0.9"
 default-features = false
 features = [
 	"bevy_asset",

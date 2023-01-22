@@ -203,10 +203,6 @@
           nativeBuildInputs = with pkgs;
             [
               (toolchain.withComponents ["cargo" "rustc" "rust-src" "rustfmt" "clippy"])
-              rust-analyzer
-              lldb
-              nil
-              terraform
               heroku
             ]
             ++ nativeBuildInputs;
