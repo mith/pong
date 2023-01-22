@@ -201,9 +201,9 @@ pub(crate) fn ball_collision(
 
 pub(crate) fn ball_scoring(
     mut commands: Commands,
-    ball_query: Query<(&Ball, &Transform, &Sprite), Without<Court>>,
+    ball_query: Query<(&Ball, &Transform, &Sprite)>,
     mut score: ResMut<Score>,
-    court_collider_query: Query<(&Court, &Transform, &Sprite), Without<Ball>>,
+    court_collider_query: Query<(&Court, &Transform, &Sprite)>,
 ) {
     let (_ball, ball_transform, ball_sprite) = ball_query.single();
     let ball_size = ball_sprite
