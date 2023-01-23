@@ -9,6 +9,9 @@ edition = "2021"
 [features]
 online = ["bevy_ggrs", "matchbox_socket", "ggrs", "bytemuck"]
 
+default = ["online"]
+
+
 [profile.release]
 lto = true
 opt-level = "z"

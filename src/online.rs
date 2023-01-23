@@ -1,5 +1,5 @@
 use bevy::{prelude::*, tasks::IoTaskPool};
-use bevy_ggrs::{GGRSPlugin, Rollback, RollbackIdProvider, Session};
+use bevy_ggrs::{GGRSPlugin, PlayerInputs, Rollback, RollbackIdProvider, Session};
 use bytemuck::{Pod, Zeroable};
 use ggrs::{Config, InputStatus, PlayerHandle, SessionBuilder};
 use iyes_loopless::prelude::*;
@@ -29,7 +29,7 @@ pub struct BoxInput {
 }
 
 fn start_matchbox_socket(mut commands: Commands) {
-    let room_url = "wss://pong-signalling-server.herokuapp.com/pong?next=2";
+    let room_url = "wss://pong-signalling-server.fly.dev/pong?next=2";
     info!("connecting to matchbox server: {:?}", room_url);
     let (socket, message_loop) = WebRtcSocket::new(room_url);
 
@@ -160,9 +160,12 @@ fn input(_handle: In<PlayerHandle>, keyboard_input: Res<Input<KeyCode>>) -> BoxI
 #[derive(Resource, Deref, DerefMut)]
 struct BoxInputs(Vec<(BoxInput, InputStatus)>);
 
-fn box_input_to_paddle_input(box_inputs: Res<BoxInputs>, mut paddle_inputs: ResMut<PaddleInputs>) {
+fn box_input_to_paddle_input(
+    inputs: Res<PlayerInputs<GGRSConfig>>,
+    mut paddle_inputs: ResMut<PaddleInputs>,
+) {
     for i in 0..2 {
-        let input = box_inputs[i].0.inp;
+        let input = inputs[i].0.inp;
         paddle_inputs[i] = PaddleInput {
             move_up: input & INPUT_UP != 0,
             move_down: input & INPUT_DOWN != 0,
