@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use iyes_loopless::prelude::*;
 
-use crate::local::{LocalGameType, LocalPlugin};
+use crate::local::LocalGameType;
 
 use crate::types::{GameType, MainMenu};
 use crate::util::despawn_with;

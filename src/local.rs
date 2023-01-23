@@ -6,8 +6,7 @@ use iyes_loopless::prelude::*;
 use crate::{
     pong::{
         ball_collision, ball_movement, ball_scoring, paddle_movement, scoreboard, serve, Ball,
-        CourtSide, GameloopStage, LeftPlayer, Paddle, PaddleInputs, PongConfig, PongState,
-        RightPlayer, Side,
+        GameloopStage, LeftPlayer, Paddle, PaddleInputs, PongConfig, PongState, RightPlayer, Side,
     },
     types::GameState,
     GameType,
