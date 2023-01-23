@@ -68,6 +68,7 @@
           mold
           clang
           pkg-config
+          cmake
         ];
       in {
         packages.pong-bin = crane-lib.buildPackage {
@@ -134,20 +135,25 @@
           name = "matchbox-server";
           src = inputs.matchbox;
           cargoBuildCommand = "cargo build --release -p matchbox_server";
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            cmake
+            fontconfig
+          ];
         };
 
         packages.signalling-server-image = pkgs.dockerTools.buildImage {
-          name = "signalling-server";
+          name = "pong-signalling-server";
           tag = "latest";
           copyToRoot = pkgs.buildEnv {
-            name = "signalling-server";
+            name = "pong-signalling-server";
             paths = [
               self.packages.${system}.signalling-server
               pkgs.busybox
             ];
           };
           config = {
-            Cmd = ["sh" "-c" "${self.packages.${system}.signalling-server}/bin/matchbox_server 0.0.0.0:$PORT"];
+            Cmd = ["sh" "-c" "${self.packages.${system}.signalling-server}/bin/matchbox_server 0.0.0.0:8080"];
           };
         };
 
@@ -203,7 +209,8 @@
           nativeBuildInputs = with pkgs;
             [
               (toolchain.withComponents ["cargo" "rustc" "rust-src" "rustfmt" "clippy"])
-              heroku
+              flyctl
+              (pkgs.docker.override {clientOnly = true;})
             ]
             ++ nativeBuildInputs;
         };
